@@ -47,6 +47,7 @@ import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 import ru.khudob1n.krasnodar.parking.data.ApiClient
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
+import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
@@ -57,6 +58,8 @@ import ru.khudob1n.krasnodar.parking.platform.hasLocationPermission
 import ru.khudob1n.krasnodar.parking.platform.locationUpdates
 import ru.khudob1n.krasnodar.parking.platform.rememberLocationPermissionRequest
 import ru.khudob1n.krasnodar.parking.ui.account.AccountSheet
+import ru.khudob1n.krasnodar.parking.ui.parking.ActiveParkingCard
+import ru.khudob1n.krasnodar.parking.ui.parking.ParkingActions
 import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -70,7 +73,7 @@ private const val ZONE_ZOOM = 17.0
  * Зоны грузятся, когда карта остановилась (MapEvent.Idle), - в радиусе, который накрывает экран.
  */
 @Composable
-fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository) {
+fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository, sessions: SessionRepository) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
 
@@ -81,6 +84,33 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository)
     var tooFar by remember { mutableStateOf(false) }
     var accountOpen by remember { mutableStateOf(false) }
     val session by auth.session.collectAsState()
+    val parkings by sessions.sessions.collectAsState()
+    // Парковка, которую показывает карточка: остановили - итог висит, пока карточку не закроют.
+    var shownParking by remember { mutableStateOf<Long?>(null) }
+    val parkingActions = remember {
+        ParkingActions(
+            auth, vehicles, sessions,
+            openAccount = { accountOpen = true; selected = null },
+            onStarted = { started -> selected = null; shownParking = started.id },
+        )
+    }
+
+    // Вошёл - подтянуть машины и парковки; вышел - забыть их.
+    LaunchedEffect(session?.user?.id) {
+        if (session == null) {
+            vehicles.clear()
+            sessions.clear()
+            return@LaunchedEffect
+        }
+        try {
+            vehicles.refresh()
+            sessions.refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Нет связи - покажем, что есть; карточки сами повторят запрос.
+        }
+    }
 
     val mapState = rememberMapState(
         baseStyle = BaseStyle.Json(if (colors.isDark) MapStyles.dark else MapStyles.light),
@@ -185,9 +215,14 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository)
             error?.let { Banner(it, Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.weight(1f))
             val zone = selected
+            val parking = parkings.firstOrNull { it.isActive } ?: parkings.firstOrNull { it.id == shownParking }
             when {
                 accountOpen -> AccountSheet(auth, vehicles, onClose = { accountOpen = false })
-                zone != null -> ZoneSheet(zone, api, onClose = { selected = null })
+                zone != null -> ZoneSheet(zone, api, parkingActions, onClose = { selected = null })
+                parking != null -> {
+                    LaunchedEffect(parking.id) { shownParking = parking.id }
+                    ActiveParkingCard(parking, sessions, onClose = { shownParking = null })
+                }
                 tooFar -> Banner("Приблизьте карту, чтобы увидеть парковки")
                 zones.isNotEmpty() -> NearestList(nearestTo(zones, user), nearUser = user != null, onPick = { picked ->
                     selected = picked
