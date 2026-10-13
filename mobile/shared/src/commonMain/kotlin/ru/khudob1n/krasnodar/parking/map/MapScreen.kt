@@ -47,6 +47,7 @@ import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 import ru.khudob1n.krasnodar.parking.data.ApiClient
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
+import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
@@ -69,7 +70,7 @@ private const val ZONE_ZOOM = 17.0
  * Зоны грузятся, когда карта остановилась (MapEvent.Idle), - в радиусе, который накрывает экран.
  */
 @Composable
-fun MapScreen(api: ApiClient, auth: AuthRepository) {
+fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
 
@@ -185,7 +186,7 @@ fun MapScreen(api: ApiClient, auth: AuthRepository) {
             Spacer(Modifier.weight(1f))
             val zone = selected
             when {
-                accountOpen -> AccountSheet(auth, onClose = { accountOpen = false })
+                accountOpen -> AccountSheet(auth, vehicles, onClose = { accountOpen = false })
                 zone != null -> ZoneSheet(zone, api, onClose = { selected = null })
                 tooFar -> Banner("Приблизьте карту, чтобы увидеть парковки")
                 zones.isNotEmpty() -> NearestList(nearestTo(zones, user), nearUser = user != null, onPick = { picked ->
