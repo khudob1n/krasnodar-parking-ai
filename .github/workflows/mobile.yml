@@ -1,0 +1,43 @@
+name: mobile
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      # Android SDK уже есть на раннере (ANDROID_HOME), недостающие платформы AGP скачает сам.
+      # Тесты общей логики на JVM, затем debug-APK.
+      - run: ./gradlew :shared:testAndroidHostTest :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v5
+        with:
+          name: krasnodar-parking-debug-apk
+          path: mobile/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      # Проверка, что общий код собирается для iPhone (симулятор).
+      - run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
