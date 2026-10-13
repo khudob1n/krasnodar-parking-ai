@@ -111,11 +111,11 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-// codeSender - вход по звонку, если задан токен Плюсофона, иначе код пишется в лог.
+// codeSender - вход по звонку, если заданы ключи uCaller, иначе код пишется в лог.
 func codeSender(cfg config.Config, log *slog.Logger) auth.CodeSender {
-	if cfg.PlusofonToken == "" {
-		log.Warn("PLUSOFON_TOKEN is not set, login codes go to the log")
+	if cfg.UCallerServiceID == "" || cfg.UCallerKey == "" {
+		log.Warn("UCALLER_SERVICE_ID or UCALLER_KEY is not set, login codes go to the log")
 		return auth.LogSender{Log: log}
 	}
-	return auth.FlashCall{Token: cfg.PlusofonToken}
+	return auth.UCaller{ServiceID: cfg.UCallerServiceID, Key: cfg.UCallerKey}
 }
