@@ -8,4 +8,5 @@
 
 - `backend/` - API на Go и импорт данных
 - `data/` - выгрузка зон с parkingkrd.ru (`zones.json`)
+- `deploy/` - запуск на сервере: Docker Compose, Postgres, HTTPS через Caddy
 - `mobile/` - клиент на Kotlin Multiplatform (появится позже)
