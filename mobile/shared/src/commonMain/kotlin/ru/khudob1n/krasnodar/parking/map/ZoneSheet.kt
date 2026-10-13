@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import ru.khudob1n.krasnodar.parking.data.ApiClient
+import ru.khudob1n.krasnodar.parking.ui.parking.ParkingActions
+import ru.khudob1n.krasnodar.parking.ui.parking.StartParking
 import ru.khudob1n.krasnodar.parking.data.Quote
 import ru.khudob1n.krasnodar.parking.data.Zone
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
@@ -51,7 +53,7 @@ val Zone.isPaid: Boolean get() = kind != ZoneKind.Free && pricePerHour > 0
  * сервера. Цена поминутная: в ней только минуты, попавшие в платные часы.
  */
 @Composable
-fun ZoneSheet(zone: Zone, api: ApiClient, onClose: () -> Unit) {
+fun ZoneSheet(zone: Zone, api: ApiClient, parking: ParkingActions, onClose: () -> Unit) {
     val c = AppTheme.colors
     Column(
         Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(16.dp),
@@ -78,15 +80,20 @@ fun ZoneSheet(zone: Zone, api: ApiClient, onClose: () -> Unit) {
         }
         if (places.isNotEmpty()) Text(places.joinToString(", ").replaceFirstChar { it.uppercase() }, style = AppTheme.type.small, color = c.functional)
 
-        if (zone.isPaid) PriceCalculator(zone, api)
+        if (zone.isPaid) {
+            var minutes by remember(zone.number) { mutableStateOf(60) }
+            val quote = PriceCalculator(zone, api, minutes) { minutes = it }
+            StartParking(zone, minutes, quote, parking)
+        }
     }
 }
 
+/** Выбор времени и цена с сервера; возвращает последний расчёт для этой зоны и времени. */
 @Composable
-private fun PriceCalculator(zone: Zone, api: ApiClient) {
+private fun PriceCalculator(zone: Zone, api: ApiClient, minutes: Int, onMinutes: (Int) -> Unit): Quote? {
     val c = AppTheme.colors
-    var minutes by remember(zone.number) { mutableStateOf(60) }
     var quote by remember(zone.number) { mutableStateOf<Quote?>(null) }
+    var quoteMinutes by remember(zone.number) { mutableStateOf(0) }
     var failed by remember(zone.number) { mutableStateOf(false) }
 
     // Цену считает сервер (тот же расчёт, что при оплате); пока человек листает варианты - ждём.
@@ -94,6 +101,7 @@ private fun PriceCalculator(zone: Zone, api: ApiClient) {
         delay(250)
         try {
             quote = api.price(zone.number, minutes)
+            quoteMinutes = minutes
             failed = false
         } catch (e: CancellationException) {
             throw e
@@ -107,12 +115,13 @@ private fun PriceCalculator(zone: Zone, api: ApiClient) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Chip("−", selected = false, enabled = minutes > STEP) { minutes = (minutes - STEP).coerceAtLeast(STEP) }
-        PRESETS.forEach { preset -> Chip(formatMinutes(preset), selected = minutes == preset) { minutes = preset } }
-        Chip("+", selected = false, enabled = minutes < MAX_MINUTES) { minutes = (minutes + STEP).coerceAtMost(MAX_MINUTES) }
+        Chip("−", selected = false, enabled = minutes > STEP) { onMinutes((minutes - STEP).coerceAtLeast(STEP)) }
+        PRESETS.forEach { preset -> Chip(formatMinutes(preset), selected = minutes == preset) { onMinutes(preset) } }
+        Chip("+", selected = false, enabled = minutes < MAX_MINUTES) { onMinutes((minutes + STEP).coerceAtMost(MAX_MINUTES)) }
     }
 
-    val q = quote?.takeIf { it.zone == zone.number }
+    // Расчёт для прошлого выбора не показываем: цена должна совпадать с выбранным временем.
+    val q = quote?.takeIf { it.zone == zone.number && quoteMinutes == minutes }
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             if (q != null) formatRub(q.total) else "…",
@@ -131,6 +140,7 @@ private fun PriceCalculator(zone: Zone, api: ApiClient) {
         )
         q != null -> Text("Оплата поминутная: остановите парковку раньше - заплатите только за фактические минуты", style = AppTheme.type.small, color = c.functional)
     }
+    return q
 }
 
 @Composable

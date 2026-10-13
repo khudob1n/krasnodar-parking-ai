@@ -115,6 +115,26 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         ok(http.delete(joinUrl(baseUrl, "/api/v1/vehicles/$id")) { header(HttpHeaders.Authorization, "Bearer $token") })
     }
 
+    /** Начать парковку (POST /api/v1/sessions). Машина уже стоит - ApiException 409. */
+    suspend fun startSession(token: String, zone: Int, vehicleId: Long, minutes: Int): ParkingSession =
+        json.decodeFromString<ParkingSession>(ok(post("/api/v1/sessions", buildJsonObject {
+            put("zone", zone)
+            put("vehicleId", vehicleId)
+            put("minutes", minutes)
+        }.toString(), token)))
+
+    /** Продлить на [minutes] минут (POST /api/v1/sessions/{id}/extend). */
+    suspend fun extendSession(token: String, id: Long, minutes: Int): ParkingSession =
+        json.decodeFromString<ParkingSession>(ok(post("/api/v1/sessions/$id/extend", buildJsonObject { put("minutes", minutes) }.toString(), token)))
+
+    /** Остановить сейчас: в итоге только фактические минуты (POST /api/v1/sessions/{id}/stop). */
+    suspend fun stopSession(token: String, id: Long): ParkingSession =
+        json.decodeFromString<ParkingSession>(ok(post("/api/v1/sessions/$id/stop", "{}", token)))
+
+    /** Последние парковки, новые первыми (GET /api/v1/sessions). */
+    suspend fun sessions(token: String, limit: Int = 20): List<ParkingSession> =
+        json.decodeFromString<SessionsResponse>(ok(getAuthorized("/api/v1/sessions?limit=$limit", token))).sessions
+
     /** Тело ответа, если он 2xx; иначе ApiException с текстом ошибки сервера. */
     internal suspend fun ok(response: HttpResponse): String {
         val body = response.bodyAsText()
