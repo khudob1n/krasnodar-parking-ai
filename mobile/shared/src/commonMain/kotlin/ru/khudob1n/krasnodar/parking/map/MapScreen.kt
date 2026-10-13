@@ -98,7 +98,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
     val askNotifications = rememberNotificationPermissionRequest()
     val parkingActions = remember {
         ParkingActions(
-            auth, vehicles, sessions,
+            auth, vehicles, cards, sessions,
             openAccount = { accountOpen = true; selected = null },
             onStarted = { started -> selected = null; shownParking = started.id; askNotifications() },
         )
@@ -121,6 +121,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
         }
         try {
             vehicles.refresh()
+            cards.refresh()
             sessions.refresh()
         } catch (e: CancellationException) {
             throw e
@@ -232,7 +233,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
                 zone != null -> ZoneSheet(zone, api, parkingActions, onClose = { selected = null })
                 parking != null -> {
                     LaunchedEffect(parking.id) { shownParking = parking.id }
-                    ActiveParkingCard(parking, sessions, onClose = { shownParking = null })
+                    ActiveParkingCard(parking, sessions, cards, onClose = { shownParking = null })
                 }
                 nearest.isNotEmpty() -> NearestList(nearest, nearUser = user != null, onPick = { picked ->
                     selected = picked

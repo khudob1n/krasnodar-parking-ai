@@ -21,6 +21,21 @@ class SessionTest {
     }
 
     @Test
+    fun parsesPostpaidWithDebt() {
+        val s = json.decodeFromString<ParkingSession>(
+            """{"id":6,"zone":1103,"plate":"А123ВС93","tariff":{"pricePerHour":6000,"paidFrom":"08:00","paidTo":"20:00"},
+            "startedAt":"2026-10-13T18:00:00+03:00","plannedEnd":"2026-10-14T18:00:00+03:00","endedAt":"2026-10-13T18:30:00+03:00",
+            "status":"finished","cost":3000,"mode":"postpaid","cardId":2,"paid":0,"debt":3000,"paymentError":"insufficient funds"}""",
+        )
+        assertTrue(s.isPostpaid)
+        assertEquals(3000, s.debt)
+        assertEquals("insufficient funds", s.paymentError)
+        assertEquals(30.minutes, s.elapsed(Instant.parse("2026-10-13T15:30:00Z")))
+        // Старый ответ без новых полей - предоплата без долга.
+        assertEquals(PaymentMode.Prepaid, json.decodeFromString<ParkingSession>(body).mode)
+    }
+
+    @Test
     fun remainingTime() {
         val s = json.decodeFromString<ParkingSession>(body)
         assertEquals(15.minutes, s.remaining(Instant.parse("2026-10-13T15:45:00Z")))
