@@ -1,6 +1,7 @@
 package ru.khudob1n.krasnodar.parking.data
 
 import io.ktor.client.HttpClient
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -100,6 +101,26 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
             token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
             setBody(TextContent(body, ContentType.Application.Json))
         }
+
+    /** Машины пользователя (GET /api/v1/vehicles). */
+    suspend fun vehicles(token: String): List<Vehicle> =
+        json.decodeFromString<VehiclesResponse>(ok(getAuthorized("/api/v1/vehicles", token))).vehicles
+
+    /** Добавить машину (POST /api/v1/vehicles). Уже есть - ApiException 409, плохой номер - 400. */
+    suspend fun addVehicle(token: String, plate: String, title: String): Vehicle =
+        json.decodeFromString<Vehicle>(ok(post("/api/v1/vehicles", buildJsonObject { put("plate", plate); put("title", title) }.toString(), token)))
+
+    /** Удалить машину (DELETE /api/v1/vehicles/{id}). */
+    suspend fun deleteVehicle(token: String, id: Long) {
+        ok(http.delete(joinUrl(baseUrl, "/api/v1/vehicles/$id")) { header(HttpHeaders.Authorization, "Bearer $token") })
+    }
+
+    /** Тело ответа, если он 2xx; иначе ApiException с текстом ошибки сервера. */
+    internal suspend fun ok(response: HttpResponse): String {
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
+        return body
+    }
 
     /** GET от имени пользователя. */
     internal suspend fun getAuthorized(path: String, token: String): HttpResponse =

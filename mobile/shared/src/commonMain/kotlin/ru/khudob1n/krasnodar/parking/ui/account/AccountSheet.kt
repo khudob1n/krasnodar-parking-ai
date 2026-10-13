@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +36,7 @@ import ru.khudob1n.krasnodar.parking.data.ApiException
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
 import ru.khudob1n.krasnodar.parking.data.CODE_DIGITS
 import ru.khudob1n.krasnodar.parking.data.CodeResult
+import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.formatPhone
 import ru.khudob1n.krasnodar.parking.data.normalizePhone
 import ru.khudob1n.krasnodar.parking.ui.components.InputField
@@ -43,12 +46,13 @@ import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
 
 /** Карточка «Профиль»: вход по SMS, а после входа - номер и выход. */
 @Composable
-fun AccountSheet(auth: AuthRepository, onClose: () -> Unit) {
+fun AccountSheet(auth: AuthRepository, vehicles: VehicleRepository, onClose: () -> Unit) {
     val c = AppTheme.colors
     val session by auth.session.collectAsState()
     val scope = rememberCoroutineScope()
     Column(
-        Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(16.dp),
+        Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary)
+            .verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -60,7 +64,8 @@ fun AccountSheet(auth: AuthRepository, onClose: () -> Unit) {
             LoginFlow(auth)
         } else {
             Text(formatPhone(current.user.phone), style = AppTheme.type.caption, color = c.textPrimary)
-            TextButton("Выйти") { scope.launch { auth.logout() } }
+            VehiclesSection(vehicles)
+            TextButton("Выйти") { scope.launch { auth.logout(); vehicles.clear() } }
         }
     }
 }
