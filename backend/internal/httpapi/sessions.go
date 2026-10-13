@@ -15,6 +15,7 @@ type SessionService interface {
 	Start(ctx context.Context, userID int64, req parking.StartRequest) (parking.Session, error)
 	Extend(ctx context.Context, userID, id int64, minutes int) (parking.Session, error)
 	Stop(ctx context.Context, userID, id int64) (parking.Session, error)
+	Pay(ctx context.Context, userID, id, cardID int64) (parking.Session, error)
 	Get(ctx context.Context, userID, id int64) (parking.Session, error)
 	List(ctx context.Context, userID int64, limit int) ([]parking.Session, error)
 }
@@ -32,13 +33,15 @@ func registerSessions(mux *http.ServeMux, svc AuthService, sessions SessionServi
 		case errors.Is(err, parking.ErrNotFound), errors.Is(err, parking.ErrZoneNotFound),
 			errors.Is(err, parking.ErrVehicleNotFound), errors.Is(err, payments.ErrCardNotFound):
 			writeError(w, http.StatusNotFound, err.Error())
-		case errors.Is(err, parking.ErrNoCard), payments.IsPaymentError(err):
+		case errors.Is(err, parking.ErrNoCard), errors.Is(err, parking.ErrHasDebt), payments.IsPaymentError(err):
 			// 402: денег не списали, пусть добавят или сменят карту.
 			writeError(w, http.StatusPaymentRequired, err.Error())
-		case errors.Is(err, parking.ErrAlreadyParked), errors.Is(err, parking.ErrNotActive):
+		case errors.Is(err, parking.ErrAlreadyParked), errors.Is(err, parking.ErrNotActive),
+			errors.Is(err, parking.ErrNothingToPay):
 			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, parking.ErrFreeZone), errors.Is(err, parking.ErrBadDuration),
-			errors.Is(err, parking.ErrTooLong), errors.Is(err, parking.ErrBadMode):
+			errors.Is(err, parking.ErrTooLong), errors.Is(err, parking.ErrBadMode),
+			errors.Is(err, parking.ErrNoEndTime):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			log.Error("parking session", "err", err)
@@ -102,6 +105,22 @@ func registerSessions(mux *http.ServeMux, svc AuthService, sessions SessionServi
 
 	mux.Handle("POST /api/v1/sessions/{id}/stop", withID(func(w http.ResponseWriter, r *http.Request, userID, id int64) {
 		s, err := sessions.Stop(r.Context(), userID, id)
+		reply(w, http.StatusOK, s, err)
+	}))
+
+	// Оплатить долг завершённой постоплатной парковки. Тело необязательно:
+	// без cardId - последняя добавленная карта.
+	mux.Handle("POST /api/v1/sessions/{id}/pay", withID(func(w http.ResponseWriter, r *http.Request, userID, id int64) {
+		var req struct {
+			CardID int64 `json:"cardId"`
+		}
+		if r.ContentLength != 0 {
+			if err := readJSON(r, &req); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		s, err := sessions.Pay(r.Context(), userID, id, req.CardID)
 		reply(w, http.StatusOK, s, err)
 	}))
 }

@@ -83,6 +83,13 @@ VALUES ($1, 1103, 'А123ВС93', 6000, '08:00', '19:00', $2, $3)`, userID, start
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Постоплатная с тем же planned_end: о ней не напоминаем.
+	_, err = pool.Exec(ctx, `
+INSERT INTO parking_sessions (user_id, zone_number, plate, price_per_hour, paid_from, paid_to, started_at, planned_end, mode)
+VALUES ($1, 1103, 'В456ОР93', 6000, '08:00', '19:00', $2, $3, 'postpaid')`, userID, start, start.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	devices := NewDevices(pool)
 	if err := devices.Register(ctx, userID, "phone-token", "android"); err != nil {

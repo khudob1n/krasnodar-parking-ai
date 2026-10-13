@@ -73,9 +73,11 @@ func (w *Worker) Tick(ctx context.Context) error {
 
 	// UPDATE ... RETURNING сразу помечает строки как отправленные. Если
 	// запущено несколько копий API, одну парковку заберёт только одна.
+	// Постоплатные пропускаем: у них нет оплаченного времени, а продлить
+	// их нельзя, planned_end - только предел в 24 часа.
 	soon, err := w.claim(ctx, `
 UPDATE parking_sessions SET reminded_at = $1
-WHERE ended_at IS NULL AND reminded_at IS NULL
+WHERE ended_at IS NULL AND reminded_at IS NULL AND mode = 'prepaid'
   AND planned_end > $1 AND planned_end <= $2
 RETURNING user_id, zone_number, plate, planned_end`, now, now.Add(w.Before))
 	if err != nil {
@@ -91,7 +93,7 @@ RETURNING user_id, zone_number, plate, planned_end`, now, now.Add(w.Before))
 	// чтобы после долгого простоя сервера не завалить людей старыми.
 	expired, err := w.claim(ctx, `
 UPDATE parking_sessions SET expired_notified_at = $1
-WHERE expired_notified_at IS NULL
+WHERE expired_notified_at IS NULL AND mode = 'prepaid'
   AND planned_end <= $1 AND planned_end > $2
   AND (ended_at IS NULL OR ended_at >= planned_end)
 RETURNING user_id, zone_number, plate, planned_end`, now, now.Add(-time.Hour))
