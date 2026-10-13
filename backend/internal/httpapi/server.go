@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/pricing"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
 
@@ -53,6 +54,40 @@ func NewHandler(db Pinger, store ZoneStore, log *slog.Logger) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, z)
+	})
+
+	mux.HandleFunc("GET /api/v1/zones/{number}/price", func(w http.ResponseWriter, r *http.Request) {
+		number, err := strconv.Atoi(r.PathValue("number"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "zone number must be an integer")
+			return
+		}
+		start, end, err := parsePriceInterval(r.URL.Query(), now())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		z, err := store.Get(r.Context(), number)
+		if errors.Is(err, zones.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "zone not found")
+			return
+		}
+		if err != nil {
+			log.Error("get zone", "number", number, "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		quote, err := pricing.Calculate(pricing.Tariff{
+			PricePerHour: z.PricePerHour, PaidFrom: z.PaidFrom, PaidTo: z.PaidTo,
+		}, start, end)
+		if err != nil {
+			log.Error("calculate price", "number", number, "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, priceResponse{
+			Zone: z.Number, Start: start, End: end, Quote: quote,
+		})
 	})
 
 	mux.HandleFunc("GET /api/v1/zones/nearby", func(w http.ResponseWriter, r *http.Request) {
