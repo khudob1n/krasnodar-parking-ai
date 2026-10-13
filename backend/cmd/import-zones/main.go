@@ -37,7 +37,11 @@ func run(ctx context.Context, path string, log *slog.Logger) error {
 		return err
 	}
 
-	pool, err := db.Connect(ctx, config.Load().DatabaseURL)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
