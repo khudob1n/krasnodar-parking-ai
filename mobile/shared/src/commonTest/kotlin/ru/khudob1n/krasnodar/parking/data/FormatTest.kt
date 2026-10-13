@@ -54,4 +54,31 @@ class FormatTest {
         assertEquals("lat is required", errorMessage("""{"error":"lat is required"}"""))
         assertEquals("Bad Gateway", errorMessage("Bad Gateway"))
     }
+
+    @Test
+    fun minutes() {
+        assertEquals("15 мин", formatMinutes(15))
+        assertEquals("1 ч", formatMinutes(60))
+        assertEquals("2 ч 30 мин", formatMinutes(150))
+    }
+
+    @Test
+    fun clock() {
+        assertEquals("18:30", clockOf("2026-10-13T18:30:00+03:00"))
+    }
+
+    @Test
+    fun zoneNumber() {
+        assertEquals(1101, parseZoneNumber(" 1101 "))
+        assertEquals(1101, parseZoneNumber("№1101"))
+        assertEquals(null, parseZoneNumber("Красная"))
+        assertEquals(null, parseZoneNumber("0"))
+    }
+
+    @Test
+    fun parsesQuote() {
+        val q = json.decodeFromString<Quote>("""{"zone":1101,"start":"2026-10-13T19:30:00+03:00","end":"2026-10-13T20:30:00+03:00","total":3000,"paidMinutes":30}""")
+        assertEquals(3000, q.total)
+        assertEquals(30, q.paidMinutes)
+    }
 }

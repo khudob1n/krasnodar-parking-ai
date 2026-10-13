@@ -26,3 +26,20 @@ fun formatDistance(meters: Int): String = when {
         if (tenths % 10 == 0) "${tenths / 10} км" else "${tenths / 10},${tenths % 10} км"
     }
 }
+
+/** Длительность: «15 мин», «1 ч», «1 ч 30 мин». */
+fun formatMinutes(minutes: Int): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h == 0 -> "$m мин"
+        m == 0 -> "$h ч"
+        else -> "$h ч $m мин"
+    }
+}
+
+/** Время «ЧЧ:ММ» из строки RFC 3339 бэкенда (он отдаёт время Краснодара): "2026-10-13T18:30:00+03:00" -> "18:30". */
+fun clockOf(rfc3339: String): String = rfc3339.substringAfter('T').take(5)
+
+/** Номер зоны из того, что ввёл человек: «1101», « 1101 », «№1101». Не число - null. */
+fun parseZoneNumber(input: String): Int? = input.trim().removePrefix("№").trim().toIntOrNull()?.takeIf { it > 0 }
