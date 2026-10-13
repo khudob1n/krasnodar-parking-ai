@@ -49,7 +49,6 @@ import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
 import ru.khudob1n.krasnodar.parking.data.formatDistance
-import ru.khudob1n.krasnodar.parking.data.paidHoursLabel
 import ru.khudob1n.krasnodar.parking.data.priceLabel
 import ru.khudob1n.krasnodar.parking.platform.hasLocationPermission
 import ru.khudob1n.krasnodar.parking.platform.locationUpdates
@@ -72,7 +71,7 @@ fun MapScreen(api: ApiClient) {
     val scope = rememberCoroutineScope()
 
     var zones by remember { mutableStateOf<List<Zone>>(emptyList()) }
-    var selected by remember { mutableStateOf<Int?>(null) }
+    var selected by remember { mutableStateOf<Zone?>(null) }
     var user by remember { mutableStateOf<LatLng?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var tooFar by remember { mutableStateOf(false) }
@@ -84,7 +83,7 @@ fun MapScreen(api: ApiClient) {
         ZoneLayers(
             zones = zones, selected = selected, user = user,
             paid = colors.parkingPaid, free = colors.parkingFree, background = colors.backgroundPrimary,
-            onSelect = { selected = it },
+            onSelect = { number -> selected = zones.firstOrNull { it.number == number } },
         )
     }
 
@@ -152,18 +151,37 @@ fun MapScreen(api: ApiClient) {
         )
 
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                error?.let { Banner(it, Modifier.weight(1f)) } ?: Spacer(Modifier.weight(1f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ZoneSearch(Modifier.weight(1f)) { number ->
+                    scope.launch {
+                        try {
+                            val found = api.zone(number)
+                            if (found == null) {
+                                error = "Зоны $number нет. Номер написан на табличке у парковки."
+                                return@launch
+                            }
+                            error = null
+                            if (zones.none { it.number == found.number }) zones = zones + found
+                            selected = found
+                            flyTo(found.location, ZONE_ZOOM)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            error = "Не удалось найти зону: нет связи с сервером"
+                        }
+                    }
+                }
                 Spacer(Modifier.size(8.dp))
                 MapButton("Где я") { if (hasLocationPermission()) scope.launch { locate() } else askPermission() }
             }
+            error?.let { Banner(it, Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.weight(1f))
-            val zone = zones.firstOrNull { it.number == selected }
+            val zone = selected
             when {
-                zone != null -> ZoneCard(zone)
+                zone != null -> ZoneSheet(zone, api, onClose = { selected = null })
                 tooFar -> Banner("Приблизьте карту, чтобы увидеть парковки")
                 zones.isNotEmpty() -> NearestList(nearestTo(zones, user), nearUser = user != null, onPick = { picked ->
-                    selected = picked.number
+                    selected = picked
                     flyTo(picked.location, ZONE_ZOOM)
                 })
             }
@@ -229,27 +247,6 @@ private fun NearestList(zones: List<Pair<Zone, Int?>>, nearUser: Boolean, onPick
                 Text(zone.priceLabel(), style = AppTheme.type.small, color = c.textPrimary)
                 distance?.let { Text(formatDistance(it), style = AppTheme.type.small, color = c.functional) }
             }
-        }
-    }
-}
-
-/** Короткая карточка выбранной зоны: номер с таблички, адрес, цена и часы. Подробная - следующим шагом. */
-@Composable
-private fun ZoneCard(zone: Zone) {
-    val c = AppTheme.colors
-    Column(
-        Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            KindDot(zone)
-            Text("Зона ${zone.number}", style = AppTheme.type.cardTitle, color = c.textPrimary)
-        }
-        Text(zone.address, style = AppTheme.type.body, color = c.textSecondary)
-        val hours = zone.paidHoursLabel()
-        Text(if (hours.isEmpty()) zone.priceLabel() else "${zone.priceLabel()} · $hours", style = AppTheme.type.body, color = c.textPrimary)
-        if (zone.totalPlaces > 0) {
-            Text("Мест: ${zone.totalPlaces}, для инвалидов: ${zone.disabledPlaces}", style = AppTheme.type.small, color = c.functional)
         }
     }
 }

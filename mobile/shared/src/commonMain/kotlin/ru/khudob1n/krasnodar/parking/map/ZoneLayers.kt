@@ -46,7 +46,7 @@ private fun Color.hex(): String {
 @Composable
 fun ZoneLayers(
     zones: List<Zone>,
-    selected: Int?,
+    selected: Zone?,
     user: LatLng?,
     paid: Color,
     free: Color,
@@ -72,7 +72,7 @@ fun ZoneLayers(
             })
         })
     }
-    val selectedZone = zones.firstOrNull { it.number == selected }
+    val selectedZone = selected
     val selectedLines = remember(selectedZone) {
         FeatureCollection(selectedZone?.segments.orEmpty().map { seg -> geoFeature(LineString(listOf(seg.start.position(), seg.stop.position())), JsonObject(emptyMap())) })
     }

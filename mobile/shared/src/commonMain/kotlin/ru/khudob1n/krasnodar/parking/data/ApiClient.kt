@@ -34,6 +34,25 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
         return json.decodeFromString<NearbyResponse>(body).zones
     }
+
+    /** Зона по номеру с таблички; null - такой зоны нет (GET /api/v1/zones/{number}). */
+    suspend fun zone(number: Int): Zone? {
+        val response = http.get(joinUrl(baseUrl, "/api/v1/zones/$number"))
+        val body = response.bodyAsText()
+        if (response.status.value == 404) return null
+        if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
+        return json.decodeFromString<Zone>(body)
+    }
+
+    /** Сколько стоит стоять [minutes] минут с этого момента (GET /api/v1/zones/{number}/price). */
+    suspend fun price(number: Int, minutes: Int): Quote {
+        val response = http.get(joinUrl(baseUrl, "/api/v1/zones/$number/price")) {
+            parameter("minutes", minutes)
+        }
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
+        return json.decodeFromString<Quote>(body)
+    }
 }
 
 // coerceInputValues: null от Go (пустой срез) превращается в значение по умолчанию.

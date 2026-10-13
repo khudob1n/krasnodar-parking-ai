@@ -41,5 +41,12 @@ data class Zone(
     val distanceMeters: Int? = null,
 )
 
+/**
+ * Расчёт цены: total - копейки к оплате, paidMinutes - сколько минут попало в платные часы
+ * (оплата поминутная, бесплатные часы не считаются). start и end - строки RFC 3339.
+ */
+@Serializable
+data class Quote(val zone: Int, val start: String, val end: String, val total: Long, val paidMinutes: Int)
+
 @Serializable
 internal data class NearbyResponse(val zones: List<Zone>)
