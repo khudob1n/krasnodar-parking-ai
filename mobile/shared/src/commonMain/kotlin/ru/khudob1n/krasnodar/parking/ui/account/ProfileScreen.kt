@@ -96,7 +96,8 @@ fun ProfileScreen(
 }
 
 /**
- * Два шага: номер телефона, потом код из SMS. Повторно код можно запросить через минуту - кнопка
+ * Два шага: номер телефона, потом код - последние 4 цифры номера, с которого позвонили (звонок
+ * сбрасывается сам, отвечать не нужно). Повторный звонок можно запросить через минуту - кнопка
  * сама показывает, сколько ждать.
  */
 @Composable
@@ -104,7 +105,7 @@ private fun LoginFlow(auth: AuthRepository) {
     val c = AppTheme.colors
     val scope = rememberCoroutineScope()
     var phoneInput by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf<String?>(null) } // номер, на который ушёл код
+    var phone by remember { mutableStateOf<String?>(null) } // номер, на который позвонили
     var code by remember { mutableStateOf("") }
     var wait by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
@@ -145,7 +146,7 @@ private fun LoginFlow(auth: AuthRepository) {
         } catch (e: ApiException) {
             error = when (e.status) {
                 401 -> "Неверный код"
-                429 -> "Слишком много попыток. Запросите новый код"
+                429 -> "Слишком много попыток. Запросите новый звонок"
                 else -> e.message
             }
             code = ""
@@ -168,9 +169,9 @@ private fun LoginFlow(auth: AuthRepository) {
             imeAction = ImeAction.Send,
             onAction = { if (normalized != null && !busy) scope.launch { send(normalized) } },
         )
-        PrimaryButton("Получить код", enabled = normalized != null && !busy) { normalized?.let { scope.launch { send(it) } } }
+        PrimaryButton("Позвонить мне", enabled = normalized != null && !busy) { normalized?.let { scope.launch { send(it) } } }
     } else {
-        Text("Код отправили на ${formatPhone(sentTo)}", style = AppTheme.type.small, color = c.textSecondary)
+        Text("Сейчас на ${formatPhone(sentTo)} позвонят. Отвечать не нужно: введите последние 4 цифры номера, который вам позвонил.", style = AppTheme.type.small, color = c.textSecondary)
         InputField(
             value = code,
             onValueChange = { v ->
@@ -178,11 +179,11 @@ private fun LoginFlow(auth: AuthRepository) {
                 // Все цифры введены - входим сразу, без лишнего нажатия.
                 if (code.length == CODE_DIGITS && !busy) scope.launch { confirm(sentTo, code) }
             },
-            placeholder = "Код из SMS",
+            placeholder = "Последние 4 цифры номера",
             keyboardType = KeyboardType.NumberPassword,
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(if (wait > 0) "Новый код через $wait с" else "Отправить код ещё раз", enabled = wait == 0 && !busy) {
+            TextButton(if (wait > 0) "Новый звонок через $wait с" else "Позвонить ещё раз", enabled = wait == 0 && !busy) {
                 scope.launch { send(sentTo) }
             }
             Box(Modifier.weight(1f))
