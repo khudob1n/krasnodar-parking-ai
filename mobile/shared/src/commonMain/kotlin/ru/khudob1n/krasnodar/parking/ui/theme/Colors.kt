@@ -37,6 +37,10 @@ data class AppColors(
     val airport = Color(0xFF2673C9)
     val favorite = Color(0xFFFF640F)
     val warning = Color(0xFFE09B00)
+
+    // Парковки: синий знака «Парковка» - платные, зелёный - бесплатные.
+    val parkingPaid = Color(0xFF2673C9)
+    val parkingFree = Color(0xFF00B400)
 }
 
 val LightColors = AppColors(
