@@ -15,15 +15,21 @@ type Config struct {
 	// ZonesFile - выгрузка зон, которую API загрузит при старте, если таблица зон пуста.
 	// Нужна бесплатным хостингам, где нельзя отдельно запустить import-zones.
 	ZonesFile string
+	// UCallerServiceID и UCallerKey - доступ к uCaller для входа по звонку.
+	// Пусто - код не отправляется, а пишется в лог (режим разработки).
+	UCallerServiceID string
+	UCallerKey       string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		DatabaseURL:    getenv("DATABASE_URL", "postgres://parking:parking@localhost:5432/parking?sslmode=disable"),
-		HTTPAddr:       getenv("HTTP_ADDR", defaultAddr()),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		AccessTokenTTL: 15 * time.Minute,
-		ZonesFile:      os.Getenv("IMPORT_ZONES_FILE"),
+		DatabaseURL:      getenv("DATABASE_URL", "postgres://parking:parking@localhost:5432/parking?sslmode=disable"),
+		HTTPAddr:         getenv("HTTP_ADDR", defaultAddr()),
+		JWTSecret:        os.Getenv("JWT_SECRET"),
+		AccessTokenTTL:   15 * time.Minute,
+		ZonesFile:        os.Getenv("IMPORT_ZONES_FILE"),
+		UCallerServiceID: os.Getenv("UCALLER_SERVICE_ID"),
+		UCallerKey:       os.Getenv("UCALLER_KEY"),
 	}
 	if raw := os.Getenv("ACCESS_TOKEN_TTL"); raw != "" {
 		ttl, err := time.ParseDuration(raw)

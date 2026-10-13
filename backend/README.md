@@ -28,8 +28,9 @@ make test      # тесты (интеграционные ходят в ту ж�
 
 ### Вход
 
-Вход по номеру телефона и SMS-коду. Пока SMS-шлюза нет, код пишется в лог API
-(строка `SMS not sent, dev mode`).
+Вход по номеру телефона и звонку (flash call через uCaller): на номер звонят и сбрасывают,
+код - последние 4 цифры номера, с которого звонили. Без `UCALLER_SERVICE_ID` и `UCALLER_KEY` код пишется в лог API
+(строка `login code not sent, dev mode`).
 
 - `POST /api/v1/auth/code` `{"phone": "+7 918 123-45-67"}` - отправить код (не чаще раза в минуту, 429 с `Retry-After`)
 - `POST /api/v1/auth/verify` `{"phone": "...", "code": "1234"}` - войти; ответ: `accessToken` (15 минут), `refreshToken` (30 дней), `user`

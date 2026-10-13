@@ -82,7 +82,7 @@ func run(log *slog.Logger) error {
 			Zones: zones.NewRepository(pool),
 			Auth: auth.NewService(
 				auth.NewPGStore(pool),
-				auth.LogSender{Log: log}, // TODO: настоящий SMS-шлюз
+				codeSender(cfg, log),
 				auth.NewTokens(cfg.JWTSecret, cfg.AccessTokenTTL),
 			),
 			Vehicles: vehicles.NewRepository(pool),
@@ -114,4 +114,13 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// codeSender - вход по звонку, если заданы ключи uCaller, иначе код пишется в лог.
+func codeSender(cfg config.Config, log *slog.Logger) auth.CodeSender {
+	if cfg.UCallerServiceID == "" || cfg.UCallerKey == "" {
+		log.Warn("UCALLER_SERVICE_ID or UCALLER_KEY is not set, login codes go to the log")
+		return auth.LogSender{Log: log}
+	}
+	return auth.UCaller{ServiceID: cfg.UCallerServiceID, Key: cfg.UCallerKey}
 }
