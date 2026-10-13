@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.cmp.resources)
             implementation(libs.cmp.lifecycle.runtime)
             implementation(libs.kotlinx.datetime)
+            implementation(libs.maplibre.compose)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
@@ -44,6 +45,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.core)
+            implementation(libs.maplibre.compose.runtime.android)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
