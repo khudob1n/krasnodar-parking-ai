@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- backgroundPrimary тёмной темы (ui/theme/Colors.kt). -->
+    <color name="background_dark">#16181C</color>
+    <!-- Фон значка: синий дорожного знака «Парковка». -->
+    <color name="icon_blue">#2673C9</color>
+</resources>
