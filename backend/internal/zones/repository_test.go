@@ -191,4 +191,17 @@ func TestImportFileIfEmpty(t *testing.T) {
 	if count, err := repo.Count(ctx); err != nil || count != 1716 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
+
+	all, err := repo.All(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1716 {
+		t.Fatalf("All returned %d zones, want 1716", len(all))
+	}
+	for i := 1; i < len(all); i++ {
+		if all[i-1].Number >= all[i].Number {
+			t.Fatalf("zones not sorted by number at %d: %d, %d", i, all[i-1].Number, all[i].Number)
+		}
+	}
 }

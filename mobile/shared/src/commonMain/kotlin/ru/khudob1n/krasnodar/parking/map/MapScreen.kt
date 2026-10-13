@@ -51,7 +51,9 @@ import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
+import ru.khudob1n.krasnodar.parking.data.ZoneCatalog
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
+import ru.khudob1n.krasnodar.parking.data.nearestZones
 import ru.khudob1n.krasnodar.parking.data.formatDistance
 import ru.khudob1n.krasnodar.parking.data.reminderIds
 import ru.khudob1n.krasnodar.parking.data.reminders
@@ -73,19 +75,20 @@ private const val NEAREST_COUNT = 5
 private const val ZONE_ZOOM = 17.0
 
 /**
- * Главный экран: карта с зонами вокруг центра карты, кнопка «Где я» и список ближайших зон.
- * Зоны грузятся, когда карта остановилась (MapEvent.Idle), - в радиусе, который накрывает экран.
+ * Главный экран: карта со всеми зонами города, кнопка «Где я» и список ближайших зон.
+ * Зоны грузятся один раз целиком (ZoneCatalog) и лежат в кэше, поэтому сдвиг карты сеть не ждёт.
  */
 @Composable
-fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository, sessions: SessionRepository) {
+fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicles: VehicleRepository, sessions: SessionRepository) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
 
-    var zones by remember { mutableStateOf<List<Zone>>(emptyList()) }
+    val catalogState by catalog.state.collectAsState()
+    val zones = catalogState.zones
     var selected by remember { mutableStateOf<Zone?>(null) }
     var user by remember { mutableStateOf<LatLng?>(null) }
+    var center by remember { mutableStateOf(City.center) }
     var error by remember { mutableStateOf<String?>(null) }
-    var tooFar by remember { mutableStateOf(false) }
     var accountOpen by remember { mutableStateOf(false) }
     val session by auth.session.collectAsState()
     val parkings by sessions.sessions.collectAsState()
@@ -146,24 +149,17 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
         }
     }
 
-    // Карта остановилась - подгрузить зоны вокруг центра кадра.
+    LaunchedEffect(catalog) { catalog.load() }
+
+    // Карта остановилась - список «рядом» считаем от нового центра кадра.
     LaunchedEffect(mapState) {
         mapState.events.collect { event ->
             if (event != MapEvent.Idle) return@collect
-            val camera = mapState.cameraPosition
-            tooFar = camera.zoom < ZONES_MIN_ZOOM
-            if (tooFar) return@collect
-            val center = LatLng(camera.target.latitude, camera.target.longitude)
-            try {
-                zones = api.nearby(center, radiusForZoom(camera.zoom, center.lat))
-                error = null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = "Не удалось загрузить зоны: ${e.message ?: "нет связи с сервером"}"
-            }
+            val target = mapState.cameraPosition.target
+            center = LatLng(target.latitude, target.longitude)
         }
     }
+    val nearest = remember(zones, user, center) { nearestZones(zones, user ?: center, NEAREST_COUNT) }
 
     suspend fun locate() {
         val point = withTimeoutOrNull(15.seconds) { runCatching { locationUpdates().first() }.getOrNull() }
@@ -203,13 +199,12 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
                 ZoneSearch(Modifier.weight(1f)) { number ->
                     scope.launch {
                         try {
-                            val found = api.zone(number)
+                            val found = catalog.find(number) ?: api.zone(number)
                             if (found == null) {
                                 error = "Зоны $number нет. Номер написан на табличке у парковки."
                                 return@launch
                             }
                             error = null
-                            if (zones.none { it.number == found.number }) zones = zones + found
                             selected = found
                             flyTo(found.location, ZONE_ZOOM)
                         } catch (e: CancellationException) {
@@ -225,6 +220,9 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
                 MapButton("Где я") { if (hasLocationPermission()) scope.launch { locate() } else askPermission() }
             }
             error?.let { Banner(it, Modifier.padding(top = 8.dp)) }
+            ZonesStatus(catalogState.zones.isEmpty(), catalogState.loading, catalogState.error, Modifier.padding(top = 8.dp)) {
+                scope.launch { catalog.load() }
+            }
             Spacer(Modifier.weight(1f))
             val zone = selected
             val parking = parkings.firstOrNull { it.isActive } ?: parkings.firstOrNull { it.id == shownParking }
@@ -235,8 +233,7 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
                     LaunchedEffect(parking.id) { shownParking = parking.id }
                     ActiveParkingCard(parking, sessions, onClose = { shownParking = null })
                 }
-                tooFar -> Banner("Приблизьте карту, чтобы увидеть парковки")
-                zones.isNotEmpty() -> NearestList(nearestTo(zones, user), nearUser = user != null, onPick = { picked ->
+                nearest.isNotEmpty() -> NearestList(nearest, nearUser = user != null, onPick = { picked ->
                     selected = picked
                     flyTo(picked.location, ZONE_ZOOM)
                 })
@@ -246,17 +243,26 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
 }
 
 /**
- * Ближайшие зоны с расстоянием: к пользователю, если знаем, где он, иначе - к центру карты (как их
- * отсортировал сервер).
+ * Что с загрузкой зон, пока карта пустая: «загружаю» или ошибка с кнопкой «Повторить».
+ * Если зоны уже есть (из кэша), ничего не показываем: карта и так работает.
  */
-private fun nearestTo(zones: List<Zone>, user: LatLng?): List<Pair<Zone, Int?>> =
-    if (user == null) zones.take(NEAREST_COUNT).map { it to it.distanceMeters }
-    else zones.map { it to distanceMeters(user, it) }.sortedBy { it.second }.take(NEAREST_COUNT)
-
-/** До ближайшей точки зоны: концы участков улиц или точка площадки (сервер меряет точнее, но от центра карты). */
-private fun distanceMeters(from: LatLng, zone: Zone): Int {
-    val points = zone.segments.flatMap { listOf(it.start, it.stop) }.ifEmpty { listOf(zone.location) }
-    return points.minOf { haversineMeters(from, it) }
+@Composable
+private fun ZonesStatus(empty: Boolean, loading: Boolean, error: String?, modifier: Modifier = Modifier, onRetry: () -> Unit) {
+    if (!empty) return
+    val c = AppTheme.colors
+    when {
+        loading -> Banner("Загружаю парковки… Первый запуск после перерыва может занять до минуты: сервер просыпается.", modifier)
+        error != null -> Row(
+            modifier.clip(AppTheme.shapes.pill).background(c.backgroundPrimary).padding(start = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(error, style = AppTheme.type.small, color = c.textSecondary, modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp))
+            Text(
+                "Повторить", style = AppTheme.type.button, color = c.functional,
+                modifier = Modifier.clickable(onClick = onRetry).padding(12.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -285,7 +291,7 @@ private fun KindDot(zone: Zone) {
 }
 
 @Composable
-private fun NearestList(zones: List<Pair<Zone, Int?>>, nearUser: Boolean, onPick: (Zone) -> Unit) {
+private fun NearestList(zones: List<Pair<Zone, Int>>, nearUser: Boolean, onPick: (Zone) -> Unit) {
     val c = AppTheme.colors
     Column(
         Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(vertical = 8.dp),
@@ -301,7 +307,7 @@ private fun NearestList(zones: List<Pair<Zone, Int?>>, nearUser: Boolean, onPick
                 Text(zone.number.toString(), style = AppTheme.type.routeNumber, color = c.textPrimary)
                 Text(zone.address, style = AppTheme.type.small, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 Text(zone.priceLabel(), style = AppTheme.type.small, color = c.textPrimary)
-                distance?.let { Text(formatDistance(it), style = AppTheme.type.small, color = c.functional) }
+                Text(formatDistance(distance), style = AppTheme.type.small, color = c.functional)
             }
         }
     }

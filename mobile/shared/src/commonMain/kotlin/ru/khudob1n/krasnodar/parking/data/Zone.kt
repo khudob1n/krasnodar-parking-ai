@@ -50,3 +50,7 @@ data class Quote(val zone: Int, val start: String, val end: String, val total: L
 
 @Serializable
 internal data class NearbyResponse(val zones: List<Zone>)
+
+/** Все зоны города и ETag ответа сервера - так они лежат в кэше на телефоне. */
+@Serializable
+data class ZoneCatalogData(val etag: String? = null, val zones: List<Zone>)

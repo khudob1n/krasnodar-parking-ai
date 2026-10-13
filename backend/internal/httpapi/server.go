@@ -18,6 +18,7 @@ import (
 // конкретного типа позволяет подменить базу в тестах.
 type ZoneStore interface {
 	Get(ctx context.Context, number int) (zones.Zone, error)
+	All(ctx context.Context) ([]zones.Zone, error)
 	Nearby(ctx context.Context, q zones.NearbyQuery) ([]zones.NearbyZone, error)
 }
 
@@ -61,6 +62,8 @@ func NewHandler(d Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	mux.Handle("GET /api/v1/zones", &allZones{store: store, log: log})
 
 	mux.HandleFunc("GET /api/v1/zones/{number}", func(w http.ResponseWriter, r *http.Request) {
 		number, err := strconv.Atoi(r.PathValue("number"))
