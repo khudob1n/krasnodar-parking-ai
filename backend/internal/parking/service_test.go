@@ -7,14 +7,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments/fakepay"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/pricing"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
 
 // Тест управляет часами сервиса, чтобы проверить, что бывает, когда
 // оплаченное время выходит.
-func TestSessionExpiry(t *testing.T) {
+// fixture - база с зоной 1103 (60 ₽/ч с 08:00 до 19:00), пользователем,
+// его машиной и картой 4242 4242 4242 4242.
+type fixture struct {
+	pool      *pgxpool.Pool
+	pay       *fakepay.Provider
+	userID    int64
+	vehicleID int64
+	cardID    int64
+}
+
+func newFixture(t *testing.T) fixture {
+	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -24,14 +39,13 @@ func TestSessionExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, "TRUNCATE users, zones CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	// Дневной тариф 60 ₽/ч с 08:00 до 19:00.
 	err = zones.NewRepository(pool).Upsert(ctx, []zones.Zone{{
 		Number: 1103, Kind: zones.KindStreet, Address: "ул. Комсомольская", PricePerHour: 6000,
 		PaidFrom: "08:00", PaidTo: "19:00", Location: zones.Point{Lat: 45.02, Lon: 38.97},
@@ -39,16 +53,39 @@ func TestSessionExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var userID, vehicleID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO users (phone) VALUES ('+79180000001') RETURNING id`).Scan(&userID); err != nil {
+	f := fixture{pool: pool, pay: fakepay.New(pool)}
+	if err := pool.QueryRow(ctx, `INSERT INTO users (phone) VALUES ('+79180000001') RETURNING id`).Scan(&f.userID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO vehicles (user_id, plate) VALUES ($1, 'А123ВС93') RETURNING id`, userID).Scan(&vehicleID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO vehicles (user_id, plate) VALUES ($1, 'А123ВС93') RETURNING id`, f.userID).Scan(&f.vehicleID); err != nil {
 		t.Fatal(err)
 	}
+	f.cardID = f.addCard(t, "4242 4242 4242 4242")
+	return f
+}
+
+// addCard привязывает пользователю тестовую карту и возвращает её id.
+func (f fixture) addCard(t *testing.T, number string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	tok, err := f.pay.Tokenize(ctx, fakepay.CardInput{Number: number, ExpMonth: 12, ExpYear: 2030, CVC: "123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := payments.NewCards(f.pool, f.pay).Add(ctx, f.userID, tok.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.ID
+}
+
+func TestSessionExpiry(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	pool, userID, vehicleID := f.pool, f.userID, f.vehicleID
 
 	clock := time.Date(2026, 10, 13, 18, 0, 0, 0, pricing.Krasnodar)
-	svc := NewService(pool)
+	svc := NewService(pool, f.pay)
 	svc.now = func() time.Time { return clock }
 
 	// 18:00, ставим на 2 часа. Платный только час до 19:00.
@@ -56,8 +93,8 @@ func TestSessionExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.Cost != 6000 {
-		t.Errorf("estimated cost: want 6000, got %d", sess.Cost)
+	if sess.Cost != 6000 || sess.Paid != 6000 {
+		t.Errorf("estimated cost and prepaid: want 6000, got %d and %d", sess.Cost, sess.Paid)
 	}
 
 	// 20:30: время вышло. Сессия показывается завершённой в 20:00.

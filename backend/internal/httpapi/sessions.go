@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments"
 )
 
 type SessionService interface {
@@ -29,12 +30,15 @@ func registerSessions(mux *http.ServeMux, svc AuthService, sessions SessionServi
 		case err == nil:
 			writeJSON(w, okStatus, s)
 		case errors.Is(err, parking.ErrNotFound), errors.Is(err, parking.ErrZoneNotFound),
-			errors.Is(err, parking.ErrVehicleNotFound):
+			errors.Is(err, parking.ErrVehicleNotFound), errors.Is(err, payments.ErrCardNotFound):
 			writeError(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, parking.ErrNoCard), payments.IsPaymentError(err):
+			// 402: денег не списали, пусть добавят или сменят карту.
+			writeError(w, http.StatusPaymentRequired, err.Error())
 		case errors.Is(err, parking.ErrAlreadyParked), errors.Is(err, parking.ErrNotActive):
 			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, parking.ErrFreeZone), errors.Is(err, parking.ErrBadDuration),
-			errors.Is(err, parking.ErrTooLong):
+			errors.Is(err, parking.ErrTooLong), errors.Is(err, parking.ErrBadMode):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			log.Error("parking session", "err", err)

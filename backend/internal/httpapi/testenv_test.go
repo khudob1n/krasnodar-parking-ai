@@ -19,6 +19,8 @@ import (
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/auth"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments/fakepay"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/reminders"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
@@ -55,14 +57,18 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	sms := &smsBox{}
 	svc := auth.NewService(auth.NewPGStore(pool), sms, auth.NewTokens("test-secret-test-secret-test-secret", time.Minute))
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pay := fakepay.New(pool)
 	srv := httptest.NewServer(NewHandler(Deps{
 		DB:       pool,
 		Zones:    zones.NewRepository(pool),
 		Auth:     svc,
 		Vehicles: vehicles.NewRepository(pool),
-		Sessions: parking.NewService(pool),
+		Sessions: parking.NewService(pool, pay),
 		Devices:  reminders.NewDevices(pool),
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Cards:    payments.NewCards(pool, pay),
+		FakePay:  pay.Handler(log),
+		Log:      log,
 	}))
 	t.Cleanup(srv.Close)
 	return &testEnv{t: t, pool: pool, srv: srv, sms: sms}
@@ -100,6 +106,19 @@ func (e *testEnv) login(phone string) string {
 		e.t.Fatalf("verify: %d %v", code, out)
 	}
 	return out["accessToken"].(string)
+}
+
+// addCard привязывает пользователю тестовую карту так же, как приложение:
+// токен у fakepay, потом токен в наш API. Возвращает ответ API.
+func (e *testEnv) addCard(token, number string) (int, map[string]any) {
+	e.t.Helper()
+	code, tok := e.call("POST", "/fakepay/v1/tokens", "", map[string]any{
+		"number": number, "expMonth": 12, "expYear": 2030, "cvc": "123",
+	})
+	if code != 201 {
+		e.t.Fatalf("tokenize %s: %d %v", number, code, tok)
+	}
+	return e.call("POST", "/api/v1/cards", token, map[string]any{"token": tok["token"]})
 }
 
 // smsBox запоминает последнее «отправленное» SMS.
