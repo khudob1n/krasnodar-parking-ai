@@ -156,3 +156,39 @@ func TestRepositoryNearby(t *testing.T) {
 		t.Fatalf("kind=lot: want only 1158, got %+v", got)
 	}
 }
+
+func TestImportFileIfEmpty(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+
+	pool, err := db.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "TRUNCATE zones CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	repo := zones.NewRepository(pool)
+
+	n, err := repo.ImportFileIfEmpty(ctx, "../../../data/zones.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1716 {
+		t.Fatalf("imported %d zones, want 1716", n)
+	}
+	// Второй запуск (перезапуск сервера) ничего не трогает.
+	if n, err = repo.ImportFileIfEmpty(ctx, "../../../data/zones.json"); err != nil || n != 0 {
+		t.Fatalf("second import: n=%d err=%v, want 0, nil", n, err)
+	}
+	if count, err := repo.Count(ctx); err != nil || count != 1716 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+}

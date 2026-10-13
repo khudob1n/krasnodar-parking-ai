@@ -12,14 +12,18 @@ type Config struct {
 	HTTPAddr       string        // адрес, на котором слушает API
 	JWTSecret      string        // секрет для подписи access-токенов
 	AccessTokenTTL time.Duration // сколько живёт access-токен
+	// ZonesFile - выгрузка зон, которую API загрузит при старте, если таблица зон пуста.
+	// Нужна бесплатным хостингам, где нельзя отдельно запустить import-zones.
+	ZonesFile string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
 		DatabaseURL:    getenv("DATABASE_URL", "postgres://parking:parking@localhost:5432/parking?sslmode=disable"),
-		HTTPAddr:       getenv("HTTP_ADDR", ":8080"),
+		HTTPAddr:       getenv("HTTP_ADDR", defaultAddr()),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		AccessTokenTTL: 15 * time.Minute,
+		ZonesFile:      os.Getenv("IMPORT_ZONES_FILE"),
 	}
 	if raw := os.Getenv("ACCESS_TOKEN_TTL"); raw != "" {
 		ttl, err := time.ParseDuration(raw)
@@ -37,6 +41,14 @@ func (c Config) RequireJWTSecret() error {
 		return errors.New("JWT_SECRET must be set and at least 32 characters long")
 	}
 	return nil
+}
+
+// defaultAddr - порт из PORT, если хостинг его задаёт (Render, Koyeb, Railway), иначе 8080.
+func defaultAddr() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return ":" + port
+	}
+	return ":8080"
 }
 
 func getenv(key, fallback string) string {

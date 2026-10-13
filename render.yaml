@@ -1,0 +1,22 @@
+# Бесплатный деплой API на Render (https://render.com): New > Blueprint > этот репозиторий.
+# База - бесплатный Postgres с PostGIS на Neon, строку подключения вставить в DATABASE_URL.
+# Подробно - deploy/FREE.md.
+services:
+  - type: web
+    name: krasnodar-parking-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    branch: main
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Зоны загрузятся из образа при первом старте, когда база ещё пустая.
+      - key: IMPORT_ZONES_FILE
+        value: /data/zones.json
