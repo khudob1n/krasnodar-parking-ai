@@ -102,7 +102,8 @@ func (s *Service) Extend(ctx context.Context, userID, id int64, minutes int) (Se
 		if end.Sub(sess.StartedAt) > maxSession {
 			return ErrTooLong
 		}
-		_, err = tx.Exec(ctx, `UPDATE parking_sessions SET planned_end = $1 WHERE id = $2`, end, id)
+		// reminded_at сбрасываем, чтобы напомнить и о новом конце.
+		_, err = tx.Exec(ctx, `UPDATE parking_sessions SET planned_end = $1, reminded_at = NULL WHERE id = $2`, end, id)
 		return err
 	})
 	if err != nil {

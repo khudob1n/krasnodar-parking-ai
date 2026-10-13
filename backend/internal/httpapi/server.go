@@ -32,6 +32,7 @@ type Deps struct {
 	Auth     AuthService
 	Vehicles VehicleStore
 	Sessions SessionService
+	Devices  DeviceStore
 	Log      *slog.Logger
 }
 
@@ -42,6 +43,7 @@ func NewHandler(d Deps) http.Handler {
 	registerAuth(mux, d.Auth, log)
 	registerVehicles(mux, d.Auth, d.Vehicles, log)
 	registerSessions(mux, d.Auth, d.Sessions, log)
+	registerDevices(mux, d.Auth, d.Devices, log)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {

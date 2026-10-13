@@ -16,6 +16,7 @@ import (
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/httpapi"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/reminders"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
@@ -49,6 +50,19 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
+	sessions := parking.NewService(pool)
+	worker := reminders.NewWorker(pool, reminders.LogNotifier{Log: log}, sessions, log) // TODO: настоящие push
+	workerDone := make(chan struct{})
+	go func() {
+		worker.Run(ctx)
+		close(workerDone)
+	}()
+	// Перед закрытием пула дожидаемся, пока воркер доделает проход.
+	defer func() {
+		stop()
+		<-workerDone
+	}()
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewHandler(httpapi.Deps{
@@ -60,7 +74,8 @@ func run(log *slog.Logger) error {
 				auth.NewTokens(cfg.JWTSecret, cfg.AccessTokenTTL),
 			),
 			Vehicles: vehicles.NewRepository(pool),
-			Sessions: parking.NewService(pool),
+			Sessions: sessions,
+			Devices:  reminders.NewDevices(pool),
 			Log:      log,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

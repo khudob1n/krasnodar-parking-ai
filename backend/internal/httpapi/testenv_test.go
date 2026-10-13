@@ -19,6 +19,7 @@ import (
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/auth"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/reminders"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
@@ -60,6 +61,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Auth:     svc,
 		Vehicles: vehicles.NewRepository(pool),
 		Sessions: parking.NewService(pool),
+		Devices:  reminders.NewDevices(pool),
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}))
 	t.Cleanup(srv.Close)
