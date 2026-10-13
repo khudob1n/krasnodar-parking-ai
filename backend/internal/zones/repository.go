@@ -71,35 +71,99 @@ func (r *Repository) Upsert(ctx context.Context, zones []Zone) error {
 	})
 }
 
-// Get возвращает зону по номеру с таблички.
-func (r *Repository) Get(ctx context.Context, number int) (Zone, error) {
-	const q = `
-SELECT number, kind, address, description,
-       ST_Y(location::geometry), ST_X(location::geometry),
-       COALESCE(ST_AsText(segments), ''),
-       price_per_hour, to_char(paid_from, 'HH24:MI'), to_char(paid_to, 'HH24:MI'),
-       total_places, disabled_places, in_building, tariff_text
-FROM zones WHERE number = $1`
+// zoneColumns - поля зоны в том порядке, в котором их читает scanZone.
+const zoneColumns = `
+    number, kind, address, description,
+    ST_Y(location::geometry), ST_X(location::geometry),
+    COALESCE(ST_AsText(segments), ''),
+    price_per_hour, to_char(paid_from, 'HH24:MI'), to_char(paid_to, 'HH24:MI'),
+    total_places, disabled_places, in_building, tariff_text`
 
+// scanZone читает одну зону из строки результата. extra - дополнительные
+// колонки после zoneColumns (например, расстояние).
+func scanZone(row pgx.Row, extra ...any) (Zone, error) {
 	var z Zone
 	var wkt string
-	err := r.pool.QueryRow(ctx, q, number).Scan(
+	dest := []any{
 		&z.Number, &z.Kind, &z.Address, &z.Description,
 		&z.Location.Lat, &z.Location.Lon,
 		&wkt,
 		&z.PricePerHour, &z.PaidFrom, &z.PaidTo,
 		&z.TotalPlaces, &z.DisabledPlaces, &z.InBuilding, &z.TariffText,
-	)
+	}
+	if err := row.Scan(append(dest, extra...)...); err != nil {
+		return Zone{}, err
+	}
+	segments, err := parseSegmentsWKT(wkt)
+	if err != nil {
+		return Zone{}, fmt.Errorf("zone %d segments: %w", z.Number, err)
+	}
+	z.Segments = segments
+	return z, nil
+}
+
+// Get возвращает зону по номеру с таблички.
+func (r *Repository) Get(ctx context.Context, number int) (Zone, error) {
+	q := `SELECT` + zoneColumns + ` FROM zones WHERE number = $1`
+	z, err := scanZone(r.pool.QueryRow(ctx, q, number))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Zone{}, ErrNotFound
 	}
 	if err != nil {
 		return Zone{}, fmt.Errorf("get zone %d: %w", number, err)
 	}
-	if z.Segments, err = parseSegmentsWKT(wkt); err != nil {
-		return Zone{}, fmt.Errorf("zone %d segments: %w", number, err)
-	}
 	return z, nil
+}
+
+// NearbyQuery - параметры поиска парковок рядом с точкой.
+type NearbyQuery struct {
+	Point        Point
+	RadiusMeters int
+	Limit        int
+	Kinds        []Kind // пусто - любые типы
+}
+
+// NearbyZone - зона и расстояние до неё.
+type NearbyZone struct {
+	Zone
+	DistanceMeters int `json:"distanceMeters"`
+}
+
+// Nearby ищет зоны в радиусе от точки, ближайшие первыми. Расстояние
+// считается до ближайшего участка улицы, а если участков нет - до точки зоны.
+func (r *Repository) Nearby(ctx context.Context, q NearbyQuery) ([]NearbyZone, error) {
+	kinds := make([]string, len(q.Kinds))
+	for i, k := range q.Kinds {
+		kinds[i] = string(k)
+	}
+
+	sql := `
+WITH me AS (SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS p)
+SELECT` + zoneColumns + `, round(ST_Distance(z.shape, me.p))::int AS distance
+FROM zones z, me
+WHERE ST_DWithin(z.shape, me.p, $3)
+  AND (cardinality($4::text[]) = 0 OR z.kind = ANY($4))
+ORDER BY distance, z.number
+LIMIT $5`
+
+	rows, err := r.pool.Query(ctx, sql, q.Point.Lon, q.Point.Lat, q.RadiusMeters, kinds, q.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("nearby zones: %w", err)
+	}
+	defer rows.Close()
+
+	result := []NearbyZone{}
+	for rows.Next() {
+		var n NearbyZone
+		if n.Zone, err = scanZone(rows, &n.DistanceMeters); err != nil {
+			return nil, fmt.Errorf("nearby zones: %w", err)
+		}
+		result = append(result, n)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("nearby zones: %w", err)
+	}
+	return result, nil
 }
 
 // segmentsWKT записывает участки в текстовый формат WKT, который понимает
