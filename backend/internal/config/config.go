@@ -15,6 +15,9 @@ type Config struct {
 	// ZonesFile - выгрузка зон, которую API загрузит при старте, если таблица зон пуста.
 	// Нужна бесплатным хостингам, где нельзя отдельно запустить import-zones.
 	ZonesFile string
+	// PlusofonToken - API-токен Плюсофона для входа по звонку.
+	// Пусто - код не отправляется, а пишется в лог (режим разработки).
+	PlusofonToken string
 }
 
 func Load() (Config, error) {
@@ -24,6 +27,7 @@ func Load() (Config, error) {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		AccessTokenTTL: 15 * time.Minute,
 		ZonesFile:      os.Getenv("IMPORT_ZONES_FILE"),
+		PlusofonToken:  os.Getenv("PLUSOFON_TOKEN"),
 	}
 	if raw := os.Getenv("ACCESS_TOKEN_TTL"); raw != "" {
 		ttl, err := time.ParseDuration(raw)

@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -102,26 +102,27 @@ func (e *testEnv) login(phone string) string {
 	return out["accessToken"].(string)
 }
 
-// smsBox запоминает последнее «отправленное» SMS.
+// smsBox вместо звонка выдаёт коды по порядку и запоминает последний.
 type smsBox struct {
 	mu   sync.Mutex
+	n    int
 	last string
 }
 
-func (b *smsBox) Send(_ context.Context, _, text string) error {
+func (b *smsBox) SendCode(context.Context, string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.last = text
-	return nil
+	b.n++
+	b.last = fmt.Sprintf("%04d", b.n)
+	return b.last, nil
 }
 
 func (b *smsBox) code(t *testing.T) string {
 	t.Helper()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	m := regexp.MustCompile(`\d{4}$`).FindString(b.last)
-	if m == "" {
-		t.Fatalf("no code in sms %q", b.last)
+	if b.last == "" {
+		t.Fatal("no code sent")
 	}
-	return m
+	return b.last
 }

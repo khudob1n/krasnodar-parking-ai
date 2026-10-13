@@ -17,6 +17,9 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Токен Плюсофона для входа по звонку (deploy/FREE.md, шаг 4). Пусто - код в логах.
+      - key: PLUSOFON_TOKEN
+        sync: false
       # Зоны загрузятся из образа при первом старте, когда база ещё пустая.
       - key: IMPORT_ZONES_FILE
         value: /data/zones.json

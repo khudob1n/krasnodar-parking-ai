@@ -79,7 +79,7 @@ func run(log *slog.Logger) error {
 			Zones: zones.NewRepository(pool),
 			Auth: auth.NewService(
 				auth.NewPGStore(pool),
-				auth.LogSender{Log: log}, // TODO: настоящий SMS-шлюз
+				codeSender(cfg, log),
 				auth.NewTokens(cfg.JWTSecret, cfg.AccessTokenTTL),
 			),
 			Vehicles: vehicles.NewRepository(pool),
@@ -109,4 +109,13 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// codeSender - вход по звонку, если задан токен Плюсофона, иначе код пишется в лог.
+func codeSender(cfg config.Config, log *slog.Logger) auth.CodeSender {
+	if cfg.PlusofonToken == "" {
+		log.Warn("PLUSOFON_TOKEN is not set, login codes go to the log")
+		return auth.LogSender{Log: log}
+	}
+	return auth.FlashCall{Token: cfg.PlusofonToken}
 }

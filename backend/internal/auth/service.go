@@ -1,6 +1,7 @@
-// Package auth - вход по номеру телефона и SMS-коду.
+// Package auth - вход по номеру телефона и одноразовому коду.
 //
-// Схема: клиент просит код (RequestCode), мы шлём его по SMS. Клиент
+// Схема: клиент просит код (RequestCode), мы доставляем его на номер
+// (звонком или в лог при разработке). Клиент
 // присылает код (Verify) и получает пару токенов: короткий access (JWT,
 // им подписывается каждый запрос) и долгий refresh (им получают новую
 // пару, когда access истёк).
@@ -30,12 +31,11 @@ func (e TooSoonError) Error() string {
 }
 
 const (
-	codeTTL      = 5 * time.Minute
-	resendAfter  = time.Minute
-	maxAttempts  = 5
-	refreshTTL   = 30 * 24 * time.Hour
-	codeDigits   = 4
-	codeTemplate = "Код для входа в Парковки Краснодара: %s"
+	codeTTL     = 5 * time.Minute
+	resendAfter = time.Minute
+	maxAttempts = 5
+	refreshTTL  = 30 * 24 * time.Hour
+	codeDigits  = 4
 )
 
 type User struct {
@@ -74,20 +74,22 @@ type Store interface {
 	DeleteRefresh(ctx context.Context, tokenHash []byte) error
 }
 
-// SMSSender отправляет SMS. Пока настоящего сервиса нет, есть LogSender.
-type SMSSender interface {
-	Send(ctx context.Context, phone, text string) error
+// CodeSender доставляет код входа на номер и возвращает этот код.
+// Код придумывает сам отправитель: при входе по звонку (FlashCall) это
+// последние цифры номера, с которого позвонили, и выбрать их мы не можем.
+type CodeSender interface {
+	SendCode(ctx context.Context, phone string) (string, error)
 }
 
 type Service struct {
 	store  Store
-	sms    SMSSender
+	sender CodeSender
 	tokens *Tokens
 	now    func() time.Time
 }
 
-func NewService(store Store, sms SMSSender, tokens *Tokens) *Service {
-	return &Service{store: store, sms: sms, tokens: tokens, now: time.Now}
+func NewService(store Store, sender CodeSender, tokens *Tokens) *Service {
+	return &Service{store: store, sender: sender, tokens: tokens, now: time.Now}
 }
 
 // RequestCode создаёт код и отправляет его на номер.
@@ -108,20 +110,18 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) error {
 		}
 	}
 
-	code, err := randomCode()
+	// Сначала доставляем, потом сохраняем: код знает только отправитель.
+	// Если доставка не удалась, старый код остаётся в силе.
+	code, err := s.sender.SendCode(ctx, phone)
 	if err != nil {
-		return err
+		return fmt.Errorf("send code: %w", err)
 	}
-	err = s.store.SaveCode(ctx, LoginCode{
+	return s.store.SaveCode(ctx, LoginCode{
 		Phone:     phone,
 		CodeHash:  hash(phone + ":" + code),
 		SentAt:    now,
 		ExpiresAt: now.Add(codeTTL),
 	})
-	if err != nil {
-		return err
-	}
-	return s.sms.Send(ctx, phone, fmt.Sprintf(codeTemplate, code))
 }
 
 // Verify проверяет код и, если он верный, входит (или регистрирует).
