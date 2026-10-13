@@ -1,0 +1,123 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"regexp"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/auth"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
+)
+
+// testEnv - API на настоящей базе для сквозных тестов.
+type testEnv struct {
+	t    *testing.T
+	pool *pgxpool.Pool
+	srv  *httptest.Server
+	sms  *smsBox
+}
+
+// newTestEnv поднимает API поверх TEST_DATABASE_URL, очищая таблицы.
+// Без переменной тест пропускается.
+func newTestEnv(t *testing.T) *testEnv {
+	t.Helper()
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := db.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "TRUNCATE users, login_codes, refresh_tokens CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+
+	sms := &smsBox{}
+	svc := auth.NewService(auth.NewPGStore(pool), sms, auth.NewTokens("test-secret-test-secret-test-secret", time.Minute))
+	srv := httptest.NewServer(NewHandler(Deps{
+		DB:       pool,
+		Zones:    zones.NewRepository(pool),
+		Auth:     svc,
+		Vehicles: vehicles.NewRepository(pool),
+		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}))
+	t.Cleanup(srv.Close)
+	return &testEnv{t: t, pool: pool, srv: srv, sms: sms}
+}
+
+// call делает запрос и возвращает код ответа и разобранный JSON.
+func (e *testEnv) call(method, path, token string, body any) (int, map[string]any) {
+	e.t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		_ = json.NewEncoder(&buf).Encode(body)
+	}
+	req, _ := http.NewRequest(method, e.srv.URL+path, &buf)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out := map[string]any{}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+// login входит по номеру и возвращает access-токен.
+func (e *testEnv) login(phone string) string {
+	e.t.Helper()
+	if code, out := e.call("POST", "/api/v1/auth/code", "", map[string]string{"phone": phone}); code != 204 {
+		e.t.Fatalf("request code: %d %v", code, out)
+	}
+	code, out := e.call("POST", "/api/v1/auth/verify", "", map[string]string{"phone": phone, "code": e.sms.code(e.t)})
+	if code != 200 {
+		e.t.Fatalf("verify: %d %v", code, out)
+	}
+	return out["accessToken"].(string)
+}
+
+// smsBox запоминает последнее «отправленное» SMS.
+type smsBox struct {
+	mu   sync.Mutex
+	last string
+}
+
+func (b *smsBox) Send(_ context.Context, _, text string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.last = text
+	return nil
+}
+
+func (b *smsBox) code(t *testing.T) string {
+	t.Helper()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := regexp.MustCompile(`\d{4}$`).FindString(b.last)
+	if m == "" {
+		t.Fatalf("no code in sms %q", b.last)
+	}
+	return m
+}

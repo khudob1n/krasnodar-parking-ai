@@ -27,10 +27,11 @@ type Pinger interface {
 
 // Deps - всё, что нужно ручкам API.
 type Deps struct {
-	DB    Pinger
-	Zones ZoneStore
-	Auth  AuthService
-	Log   *slog.Logger
+	DB       Pinger
+	Zones    ZoneStore
+	Auth     AuthService
+	Vehicles VehicleStore
+	Log      *slog.Logger
 }
 
 // NewHandler собирает все маршруты API.
@@ -38,6 +39,7 @@ func NewHandler(d Deps) http.Handler {
 	db, store, log := d.DB, d.Zones, d.Log
 	mux := http.NewServeMux()
 	registerAuth(mux, d.Auth, log)
+	registerVehicles(mux, d.Auth, d.Vehicles, log)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {
