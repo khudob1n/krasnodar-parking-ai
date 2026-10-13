@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -126,11 +127,15 @@ type smsBox struct {
 	mu   sync.Mutex
 	n    int
 	last string
+	fail bool // имитировать сбой сервиса звонков
 }
 
 func (b *smsBox) SendCode(context.Context, string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.fail {
+		return "", errors.New("balance is empty")
+	}
 	b.n++
 	b.last = fmt.Sprintf("%04d", b.n)
 	return b.last, nil

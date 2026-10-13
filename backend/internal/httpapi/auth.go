@@ -41,6 +41,10 @@ func registerAuth(mux *http.ServeMux, svc AuthService, log *slog.Logger) {
 			w.WriteHeader(http.StatusNoContent)
 		case errors.Is(err, auth.ErrBadPhone):
 			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, auth.ErrSendFailed):
+			// Приложение показывает текст ошибки как есть, поэтому по-русски.
+			log.Error("request code", "err", err)
+			writeError(w, http.StatusBadGateway, "Не получилось позвонить на номер. Попробуйте позже.")
 		case errors.As(err, &tooSoon):
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(tooSoon.RetryAfter.Seconds()))))
 			writeError(w, http.StatusTooManyRequests, err.Error())

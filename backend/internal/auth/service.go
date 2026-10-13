@@ -21,6 +21,9 @@ var (
 	ErrCodeInvalid     = errors.New("code is invalid or expired")
 	ErrTooManyAttempts = errors.New("too many attempts, request a new code")
 	ErrNotFound        = errors.New("not found")
+	// ErrSendFailed - сервис звонков не смог доставить код (нет денег, сбой и т.п.).
+	// Подробности - в обёрнутой ошибке, в логе; пользователю они не нужны.
+	ErrSendFailed = errors.New("send code failed")
 )
 
 // TooSoonError - новый код просят раньше, чем можно.
@@ -114,7 +117,7 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) error {
 	// Если доставка не удалась, старый код остаётся в силе.
 	code, err := s.sender.SendCode(ctx, phone)
 	if err != nil {
-		return fmt.Errorf("send code: %w", err)
+		return fmt.Errorf("%w: %w", ErrSendFailed, err)
 	}
 	return s.store.SaveCode(ctx, LoginCode{
 		Phone:     phone,
