@@ -6,13 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -34,6 +32,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.khudob1n.krasnodar.parking.data.ApiException
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
+import ru.khudob1n.krasnodar.parking.data.CardRepository
+import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.CODE_DIGITS
 import ru.khudob1n.krasnodar.parking.data.CodeResult
 import ru.khudob1n.krasnodar.parking.data.VehicleRepository
@@ -44,39 +44,55 @@ import ru.khudob1n.krasnodar.parking.ui.components.PrimaryButton
 import ru.khudob1n.krasnodar.parking.ui.components.TextButton
 import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
 
-/** Карточка «Профиль»: вход по SMS, а после входа - номер и выход. */
+/**
+ * Профиль на весь экран поверх карты. До входа - вход по коду, после - разделы как в настройках
+ * телефона: номер, машины, карты оплаты, история парковок и выход.
+ */
 @Composable
-fun AccountSheet(auth: AuthRepository, vehicles: VehicleRepository, onClose: () -> Unit) {
+fun ProfileScreen(
+    auth: AuthRepository,
+    vehicles: VehicleRepository,
+    cards: CardRepository,
+    sessions: SessionRepository,
+    onClose: () -> Unit,
+) {
     val c = AppTheme.colors
     val session by auth.session.collectAsState()
     val scope = rememberCoroutineScope()
-    Column(
-        Modifier.fillMaxWidth().widthIn(max = 560.dp).clip(AppTheme.shapes.card).background(c.backgroundPrimary)
-            .verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().background(c.backgroundSecondary).safeDrawingPadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (session == null) "Вход" else "Профиль", style = AppTheme.type.cardTitle, color = c.textPrimary, modifier = Modifier.weight(1f))
             CloseButton(onClose)
         }
-        val current = session
-        if (current == null) {
-            LoginFlow(auth)
-        } else {
-            Text(formatPhone(current.user.phone), style = AppTheme.type.caption, color = c.textPrimary)
-            VehiclesSection(vehicles)
-            TextButton("Выйти") { scope.launch { auth.logout(); vehicles.clear() } }
+        Column(
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            val current = session
+            if (current == null) {
+                Column(
+                    Modifier.fillMaxWidth().clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) { LoginFlow(auth) }
+            } else {
+                Column(
+                    Modifier.fillMaxWidth().clip(AppTheme.shapes.card).background(c.backgroundPrimary).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(formatPhone(current.user.phone), style = AppTheme.type.cardTitle, color = c.textPrimary)
+                    Text("Номер для входа и напоминаний", style = AppTheme.type.small, color = c.textSecondary)
+                }
+                VehiclesSection(vehicles)
+                CardsSection(cards)
+                HistorySection(sessions)
+                Column(Modifier.fillMaxWidth().clip(AppTheme.shapes.card).background(c.backgroundPrimary)) {
+                    ProfileRow(onClick = { scope.launch { auth.logout(); vehicles.clear(); cards.clear(); sessions.clear() } }) {
+                        Text("Выйти", style = AppTheme.type.button, color = c.busTerminal)
+                    }
+                }
+            }
         }
     }
-}
-
-@Composable
-fun CloseButton(onClose: () -> Unit) {
-    val c = AppTheme.colors
-    Box(
-        Modifier.size(36.dp).clip(CircleShape).background(c.backgroundSecondary).clickable(role = Role.Button, onClickLabel = "Закрыть", onClick = onClose),
-        contentAlignment = Alignment.Center,
-    ) { Text("✕", style = AppTheme.type.button, color = c.textSecondary) }
 }
 
 /**

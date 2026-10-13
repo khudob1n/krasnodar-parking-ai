@@ -65,6 +65,10 @@ class FormatTest {
     @Test
     fun clock() {
         assertEquals("18:30", clockOf("2026-10-13T18:30:00+03:00"))
+        // Сервер может прислать время в UTC - показываем краснодарское.
+        assertEquals("18:30", clockOf("2026-10-13T15:30:00Z"))
+        assertEquals("13 окт", dayOf("2026-10-13T15:30:00Z"))
+        assertEquals("14 окт", dayOf("2026-10-13T21:30:00Z"))
     }
 
     @Test

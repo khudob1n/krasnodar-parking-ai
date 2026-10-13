@@ -1,5 +1,10 @@
 package ru.khudob1n.krasnodar.parking.data
 
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
+
 /** Рубли из копеек: 6000 -> "60 ₽", 4550 -> "45,50 ₽". */
 fun formatRub(kopecks: Long): String {
     val rub = kopecks / 100
@@ -39,7 +44,21 @@ fun formatMinutes(minutes: Int): String {
 }
 
 /** Время «ЧЧ:ММ» из строки RFC 3339 бэкенда (он отдаёт время Краснодара): "2026-10-13T18:30:00+03:00" -> "18:30". */
-fun clockOf(rfc3339: String): String = rfc3339.substringAfter('T').take(5)
+fun clockOf(rfc3339: String): String = krasnodarTime(rfc3339)?.let { "${two(it.hour)}:${two(it.minute)}" } ?: rfc3339.substringAfter('T').take(5)
+
+/** Краснодар живёт по московскому времени. */
+private val KRASNODAR = TimeZone.of("Europe/Moscow")
+
+private val MONTHS = listOf("янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
+
+private fun two(n: Int) = n.toString().padStart(2, '0')
+
+/** Время из ответа сервера по-краснодарски: сервер может прислать его и в UTC («…Z»). */
+private fun krasnodarTime(rfc3339: String): LocalDateTime? =
+    runCatching { Instant.parse(rfc3339).toLocalDateTime(KRASNODAR) }.getOrNull()
+
+/** «13 окт» по краснодарскому времени. */
+fun dayOf(rfc3339: String): String = krasnodarTime(rfc3339)?.let { "${it.day} ${MONTHS[it.month.ordinal]}" } ?: rfc3339.take(10)
 
 /** Номер зоны из того, что ввёл человек: «1101», « 1101 », «№1101». Не число - null. */
 fun parseZoneNumber(input: String): Int? = input.trim().removePrefix("№").trim().toIntOrNull()?.takeIf { it > 0 }
