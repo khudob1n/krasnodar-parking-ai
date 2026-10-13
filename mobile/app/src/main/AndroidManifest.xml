@@ -5,6 +5,9 @@
     <!-- «Где я» и зоны рядом с пользователем. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Напоминания: за 10 минут до конца парковки и в момент окончания. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".ParkingApplication"
@@ -23,5 +26,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name="ru.khudob1n.krasnodar.parking.platform.ReminderReceiver"
+            android:exported="false" />
     </application>
 </manifest>

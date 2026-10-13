@@ -53,9 +53,13 @@ import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
 import ru.khudob1n.krasnodar.parking.data.formatDistance
+import ru.khudob1n.krasnodar.parking.data.reminderIds
+import ru.khudob1n.krasnodar.parking.data.reminders
 import ru.khudob1n.krasnodar.parking.data.priceLabel
 import ru.khudob1n.krasnodar.parking.platform.hasLocationPermission
+import ru.khudob1n.krasnodar.parking.platform.Reminders
 import ru.khudob1n.krasnodar.parking.platform.locationUpdates
+import ru.khudob1n.krasnodar.parking.platform.rememberNotificationPermissionRequest
 import ru.khudob1n.krasnodar.parking.platform.rememberLocationPermissionRequest
 import ru.khudob1n.krasnodar.parking.ui.account.AccountSheet
 import ru.khudob1n.krasnodar.parking.ui.parking.ActiveParkingCard
@@ -87,12 +91,20 @@ fun MapScreen(api: ApiClient, auth: AuthRepository, vehicles: VehicleRepository,
     val parkings by sessions.sessions.collectAsState()
     // Парковка, которую показывает карточка: остановили - итог висит, пока карточку не закроют.
     var shownParking by remember { mutableStateOf<Long?>(null) }
+    val askNotifications = rememberNotificationPermissionRequest()
     val parkingActions = remember {
         ParkingActions(
             auth, vehicles, sessions,
             openAccount = { accountOpen = true; selected = null },
-            onStarted = { started -> selected = null; shownParking = started.id },
+            onStarted = { started -> selected = null; shownParking = started.id; askNotifications() },
         )
+    }
+
+    // Напоминания на устройстве: у идущих парковок - за 10 минут и в конце, у завершённых - отменить.
+    LaunchedEffect(parkings) {
+        parkings.forEach { p ->
+            if (p.isActive) p.reminders().forEach(Reminders::schedule) else reminderIds(p.id).forEach(Reminders::cancel)
+        }
     }
 
     // Вошёл - подтянуть машины и парковки; вышел - забыть их.
