@@ -23,7 +23,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       # Android SDK уже есть на раннере (ANDROID_HOME), недостающие платформы AGP скачает сам.
       # Тесты общей логики на JVM, затем debug-APK.
-      - run: ./gradlew :shared:testAndroidHostTest :app:assembleDebug --stacktrace
+      # Переменная репозитория API_BASE_URL (адрес сервера, deploy/FREE.md) - APK ходит туда;
+      # не задана - на 127.0.0.1:8080 через adb reverse.
+      - run: ./gradlew :shared:testAndroidHostTest :app:assembleDebug --stacktrace ${API_BASE_URL:+-PapiBaseUrl=$API_BASE_URL}
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
       - uses: actions/upload-artifact@v5
         with:
           name: krasnodar-parking-debug-apk

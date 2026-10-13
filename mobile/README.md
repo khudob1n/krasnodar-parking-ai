@@ -13,3 +13,5 @@ Kotlin Multiplatform + Compose Multiplatform: весь интерфейс и л�
 Другой адрес бэкенда: `./gradlew :app:installDebug -PapiBaseUrl=https://...`.
 
 Готовый debug-APK собирает GitHub Actions (workflow `mobile`, артефакт `krasnodar-parking-debug-apk`).
+Если в репозитории задана переменная `API_BASE_URL` (адрес сервера, см. `deploy/FREE.md` в ветке бэкенда),
+этот APK ходит на сервер; иначе - на `127.0.0.1:8080`.
