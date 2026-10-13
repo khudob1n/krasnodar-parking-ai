@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 import ru.khudob1n.krasnodar.parking.data.ApiClient
+import ru.khudob1n.krasnodar.parking.data.AuthRepository
 import ru.khudob1n.krasnodar.parking.data.LatLng
 import ru.khudob1n.krasnodar.parking.data.Zone
 import ru.khudob1n.krasnodar.parking.data.ZoneKind
@@ -53,6 +55,7 @@ import ru.khudob1n.krasnodar.parking.data.priceLabel
 import ru.khudob1n.krasnodar.parking.platform.hasLocationPermission
 import ru.khudob1n.krasnodar.parking.platform.locationUpdates
 import ru.khudob1n.krasnodar.parking.platform.rememberLocationPermissionRequest
+import ru.khudob1n.krasnodar.parking.ui.account.AccountSheet
 import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -66,7 +69,7 @@ private const val ZONE_ZOOM = 17.0
  * Зоны грузятся, когда карта остановилась (MapEvent.Idle), - в радиусе, который накрывает экран.
  */
 @Composable
-fun MapScreen(api: ApiClient) {
+fun MapScreen(api: ApiClient, auth: AuthRepository) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
 
@@ -75,6 +78,8 @@ fun MapScreen(api: ApiClient) {
     var user by remember { mutableStateOf<LatLng?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var tooFar by remember { mutableStateOf(false) }
+    var accountOpen by remember { mutableStateOf(false) }
+    val session by auth.session.collectAsState()
 
     val mapState = rememberMapState(
         baseStyle = BaseStyle.Json(if (colors.isDark) MapStyles.dark else MapStyles.light),
@@ -83,7 +88,7 @@ fun MapScreen(api: ApiClient) {
         ZoneLayers(
             zones = zones, selected = selected, user = user,
             paid = colors.parkingPaid, free = colors.parkingFree, background = colors.backgroundPrimary,
-            onSelect = { number -> selected = zones.firstOrNull { it.number == number } },
+            onSelect = { number -> selected = zones.firstOrNull { it.number == number }; accountOpen = false },
         )
     }
 
@@ -172,12 +177,15 @@ fun MapScreen(api: ApiClient) {
                     }
                 }
                 Spacer(Modifier.size(8.dp))
+                MapButton(if (session == null) "Войти" else "Профиль") { accountOpen = !accountOpen; if (accountOpen) selected = null }
+                Spacer(Modifier.size(8.dp))
                 MapButton("Где я") { if (hasLocationPermission()) scope.launch { locate() } else askPermission() }
             }
             error?.let { Banner(it, Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.weight(1f))
             val zone = selected
             when {
+                accountOpen -> AccountSheet(auth, onClose = { accountOpen = false })
                 zone != null -> ZoneSheet(zone, api, onClose = { selected = null })
                 tooFar -> Banner("Приблизьте карту, чтобы увидеть парковки")
                 zones.isNotEmpty() -> NearestList(nearestTo(zones, user), nearUser = user != null, onPick = { picked ->

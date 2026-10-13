@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import ru.khudob1n.krasnodar.parking.data.ApiClient
+import ru.khudob1n.krasnodar.parking.data.AuthRepository
 import ru.khudob1n.krasnodar.parking.map.MapScreen
 import ru.khudob1n.krasnodar.parking.platform.AppConfig
 import ru.khudob1n.krasnodar.parking.platform.createHttpClient
@@ -17,6 +18,7 @@ fun App(onDarkChange: (Boolean) -> Unit = {}) {
         val dark = AppTheme.colors.isDark
         LaunchedEffect(dark) { onDarkChange(dark) }
         val api = remember { ApiClient(createHttpClient(), AppConfig.apiBaseUrl) }
-        MapScreen(api)
+        val auth = remember { AuthRepository(api) }
+        MapScreen(api, auth)
     }
 }
