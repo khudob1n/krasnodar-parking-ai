@@ -78,7 +78,7 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         return json.decodeFromString<Quote>(body)
     }
 
-    /** Отправить код в SMS (POST /api/v1/auth/code). */
+    /** Запросить код: сервер позвонит, код - последние 4 цифры номера (POST /api/v1/auth/code). */
     suspend fun requestCode(phone: String): CodeResult {
         val response = post("/api/v1/auth/code", buildJsonObject { put("phone", phone) }.toString())
         return when {
@@ -89,7 +89,7 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         }
     }
 
-    /** Войти по коду из SMS (POST /api/v1/auth/verify). Неверный код - ApiException 401. */
+    /** Войти по коду из звонка (POST /api/v1/auth/verify). Неверный код - ApiException 401. */
     suspend fun verify(phone: String, code: String): AuthSession =
         session(post("/api/v1/auth/verify", buildJsonObject { put("phone", phone); put("code", code) }.toString()))
 
@@ -127,6 +127,31 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
     /** Удалить машину (DELETE /api/v1/vehicles/{id}). */
     suspend fun deleteVehicle(token: String, id: Long) {
         ok(http.delete(joinUrl(baseUrl, "/api/v1/vehicles/$id")) { header(HttpHeaders.Authorization, "Bearer $token") })
+    }
+
+    /**
+     * Данные карты - платёжному провайдеру (тестовый fakepay живёт на том же сервере, у настоящего
+     * был бы свой адрес и SDK). Возвращает токен карты. Плохой номер или срок - ApiException 400.
+     */
+    suspend fun tokenizeCard(number: String, expMonth: Int, expYear: Int, cvc: String): String =
+        json.decodeFromString<CardToken>(ok(post("/fakepay/v1/tokens", buildJsonObject {
+            put("number", number)
+            put("expMonth", expMonth)
+            put("expYear", expYear)
+            put("cvc", cvc)
+        }.toString()))).token
+
+    /** Карты пользователя (GET /api/v1/cards). */
+    suspend fun cards(token: String): List<PaymentCard> =
+        json.decodeFromString<CardsResponse>(ok(getAuthorized("/api/v1/cards", token))).cards
+
+    /** Привязать карту по токену провайдера (POST /api/v1/cards). Банк отклонил - ApiException 402. */
+    suspend fun addCard(token: String, cardToken: String): PaymentCard =
+        json.decodeFromString<PaymentCard>(ok(post("/api/v1/cards", buildJsonObject { put("token", cardToken) }.toString(), token)))
+
+    /** Отвязать карту (DELETE /api/v1/cards/{id}). */
+    suspend fun deleteCard(token: String, id: Long) {
+        ok(http.delete(joinUrl(baseUrl, "/api/v1/cards/$id")) { header(HttpHeaders.Authorization, "Bearer $token") })
     }
 
     /** Начать парковку (POST /api/v1/sessions). Машина уже стоит - ApiException 409. */

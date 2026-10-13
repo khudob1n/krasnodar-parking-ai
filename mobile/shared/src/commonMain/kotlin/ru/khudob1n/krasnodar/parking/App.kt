@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import ru.khudob1n.krasnodar.parking.data.ApiClient
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
+import ru.khudob1n.krasnodar.parking.data.CardRepository
 import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.ZoneCatalog
@@ -28,7 +29,8 @@ fun App(onDarkChange: (Boolean) -> Unit = {}) {
         val catalog = remember { ZoneCatalog(api, readCache = { FileStore.read(ZONES_CACHE) }, writeCache = { FileStore.write(ZONES_CACHE, it) }) }
         val auth = remember { AuthRepository(api) }
         val vehicles = remember { VehicleRepository(api, auth) }
+        val cards = remember { CardRepository(api, auth) }
         val sessions = remember { SessionRepository(api, auth) }
-        MapScreen(api, catalog, auth, vehicles, sessions)
+        MapScreen(api, catalog, auth, vehicles, cards, sessions)
     }
 }

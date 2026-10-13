@@ -14,7 +14,7 @@ class NotLoggedInException : Exception("Нужно войти по номеру 
 private const val SESSION_KEY = "auth.session"
 
 /**
- * Вход по SMS и токены. Сессия хранится на устройстве, поэтому после перезапуска приложения
+ * Вход по коду из звонка и токены. Сессия хранится на устройстве, поэтому после перезапуска приложения
  * входить заново не нужно (refresh-токен живёт 30 дней).
  */
 class AuthRepository(private val api: ApiClient) {

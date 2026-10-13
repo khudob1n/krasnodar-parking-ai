@@ -47,6 +47,7 @@ import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 import ru.khudob1n.krasnodar.parking.data.ApiClient
 import ru.khudob1n.krasnodar.parking.data.AuthRepository
+import ru.khudob1n.krasnodar.parking.data.CardRepository
 import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.VehicleRepository
 import ru.khudob1n.krasnodar.parking.data.LatLng
@@ -63,7 +64,7 @@ import ru.khudob1n.krasnodar.parking.platform.Reminders
 import ru.khudob1n.krasnodar.parking.platform.locationUpdates
 import ru.khudob1n.krasnodar.parking.platform.rememberNotificationPermissionRequest
 import ru.khudob1n.krasnodar.parking.platform.rememberLocationPermissionRequest
-import ru.khudob1n.krasnodar.parking.ui.account.AccountSheet
+import ru.khudob1n.krasnodar.parking.ui.account.ProfileScreen
 import ru.khudob1n.krasnodar.parking.ui.parking.ActiveParkingCard
 import ru.khudob1n.krasnodar.parking.ui.parking.ParkingActions
 import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
@@ -79,7 +80,7 @@ private const val ZONE_ZOOM = 17.0
  * Зоны грузятся один раз целиком (ZoneCatalog) и лежат в кэше, поэтому сдвиг карты сеть не ждёт.
  */
 @Composable
-fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicles: VehicleRepository, sessions: SessionRepository) {
+fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicles: VehicleRepository, cards: CardRepository, sessions: SessionRepository) {
     val colors = AppTheme.colors
     val scope = rememberCoroutineScope()
 
@@ -114,6 +115,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
     LaunchedEffect(session?.user?.id) {
         if (session == null) {
             vehicles.clear()
+            cards.clear()
             sessions.clear()
             return@LaunchedEffect
         }
@@ -227,7 +229,6 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
             val zone = selected
             val parking = parkings.firstOrNull { it.isActive } ?: parkings.firstOrNull { it.id == shownParking }
             when {
-                accountOpen -> AccountSheet(auth, vehicles, onClose = { accountOpen = false })
                 zone != null -> ZoneSheet(zone, api, parkingActions, onClose = { selected = null })
                 parking != null -> {
                     LaunchedEffect(parking.id) { shownParking = parking.id }
@@ -239,6 +240,8 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
                 })
             }
         }
+        // Профиль - на весь экран поверх карты.
+        if (accountOpen) ProfileScreen(auth, vehicles, cards, sessions, onClose = { accountOpen = false })
     }
 }
 

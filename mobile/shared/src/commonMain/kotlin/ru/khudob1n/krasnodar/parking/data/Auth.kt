@@ -19,7 +19,7 @@ sealed interface CodeResult {
     data class Failed(val message: String) : CodeResult
 }
 
-/** Цифр в коде из SMS (codeDigits в backend/internal/auth/service.go). */
+/** Цифр в коде из звонка (codeDigits в backend/internal/auth/service.go). */
 const val CODE_DIGITS = 4
 
 /**
