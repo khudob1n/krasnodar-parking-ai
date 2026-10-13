@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -49,6 +50,35 @@ ON CONFLICT (number) DO UPDATE SET
     in_building = EXCLUDED.in_building,
     tariff_text = EXCLUDED.tariff_text,
     updated_at = now()`
+
+// Count - сколько зон в базе.
+func (r *Repository) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, "SELECT count(*) FROM zones").Scan(&n)
+	return n, err
+}
+
+// ImportFileIfEmpty загружает зоны из выгрузки parkingkrd.ru, если в базе их ещё нет.
+// Возвращает, сколько зон загрузил (0 - база уже была заполнена).
+func (r *Repository) ImportFileIfEmpty(ctx context.Context, path string) (int, error) {
+	n, err := r.Count(ctx)
+	if err != nil || n > 0 {
+		return 0, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	list, err := ParseSource(f)
+	if err != nil {
+		return 0, err
+	}
+	if err := r.Upsert(ctx, list); err != nil {
+		return 0, err
+	}
+	return len(list), nil
+}
 
 // Upsert добавляет зоны или обновляет уже существующие с тем же номером.
 // Всё выполняется в одной транзакции: либо загрузятся все зоны, либо ни одной.

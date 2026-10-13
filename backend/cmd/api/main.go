@@ -49,6 +49,15 @@ func run(log *slog.Logger) error {
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
+	if cfg.ZonesFile != "" {
+		n, err := zones.NewRepository(pool).ImportFileIfEmpty(ctx, cfg.ZonesFile)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			log.Info("zones imported on start", "total", n)
+		}
+	}
 
 	sessions := parking.NewService(pool)
 	worker := reminders.NewWorker(pool, reminders.LogNotifier{Log: log}, sessions, log) // TODO: настоящие push
