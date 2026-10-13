@@ -22,11 +22,19 @@ func (f fakeStore) Get(_ context.Context, number int) (zones.Zone, error) {
 	return z, nil
 }
 
+func (f fakeStore) Nearby(_ context.Context, q zones.NearbyQuery) ([]zones.NearbyZone, error) {
+	list := []zones.NearbyZone{}
+	for _, z := range f {
+		list = append(list, zones.NearbyZone{Zone: z, DistanceMeters: q.RadiusMeters / 2})
+	}
+	return list, nil
+}
+
 type fakePinger struct{ err error }
 
 func (p fakePinger) Ping(context.Context) error { return p.err }
 
-func TestGetZone(t *testing.T) {
+func TestHandler(t *testing.T) {
 	store := fakeStore{1103: {Number: 1103, Kind: zones.KindStreet, PricePerHour: 6000}}
 	h := NewHandler(fakePinger{}, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -39,6 +47,12 @@ func TestGetZone(t *testing.T) {
 		{"/api/v1/zones/1", http.StatusNotFound, `zone not found`},
 		{"/api/v1/zones/abc", http.StatusBadRequest, `must be an integer`},
 		{"/healthz", http.StatusOK, `"ok"`},
+		{"/api/v1/zones/nearby?lat=45.02&lon=38.97", http.StatusOK, `"distanceMeters":250`},
+		{"/api/v1/zones/nearby?lat=45.02&lon=38.97&radius=100&kind=street,lot", http.StatusOK, `"distanceMeters":50`},
+		{"/api/v1/zones/nearby?lon=38.97", http.StatusBadRequest, `lat is required`},
+		{"/api/v1/zones/nearby?lat=95&lon=38.97", http.StatusBadRequest, `lat must be between`},
+		{"/api/v1/zones/nearby?lat=45&lon=38&radius=99999", http.StatusBadRequest, `radius must be between`},
+		{"/api/v1/zones/nearby?lat=45&lon=38&kind=paid", http.StatusBadRequest, `unknown kind`},
 	}
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {

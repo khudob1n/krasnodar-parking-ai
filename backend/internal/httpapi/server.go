@@ -16,6 +16,7 @@ import (
 // конкретного типа позволяет подменить базу в тестах.
 type ZoneStore interface {
 	Get(ctx context.Context, number int) (zones.Zone, error)
+	Nearby(ctx context.Context, q zones.NearbyQuery) ([]zones.NearbyZone, error)
 }
 
 type Pinger interface {
@@ -52,6 +53,21 @@ func NewHandler(db Pinger, store ZoneStore, log *slog.Logger) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, z)
+	})
+
+	mux.HandleFunc("GET /api/v1/zones/nearby", func(w http.ResponseWriter, r *http.Request) {
+		q, err := parseNearbyQuery(r.URL.Query())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		list, err := store.Nearby(r.Context(), q)
+		if err != nil {
+			log.Error("nearby zones", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"zones": list})
 	})
 
 	return mux
