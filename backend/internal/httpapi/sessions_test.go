@@ -24,6 +24,8 @@ func TestSessions(t *testing.T) {
 	bob := e.login("+79180000002")
 	_, car := e.call("POST", "/api/v1/vehicles", alice, map[string]string{"plate": "А123ВС93"})
 	_, bobCar := e.call("POST", "/api/v1/vehicles", bob, map[string]string{"plate": "А123ВС93"})
+	_, card := e.addCard(alice, "4242 4242 4242 4242")
+	e.addCard(bob, "4242 4242 4242 4242")
 
 	start := func(token string, zone int, vehicle any, minutes int) (int, map[string]any) {
 		return e.call("POST", "/api/v1/sessions", token, map[string]any{"zone": zone, "vehicleId": vehicle, "minutes": minutes})
@@ -43,7 +45,8 @@ func TestSessions(t *testing.T) {
 	}
 
 	code, sess := start(alice, 1103, car["id"], 60)
-	if code != 201 || sess["status"] != "active" || sess["cost"] != float64(6000) {
+	if code != 201 || sess["status"] != "active" || sess["cost"] != float64(6000) ||
+		sess["paid"] != float64(6000) || sess["mode"] != "prepaid" || sess["cardId"] != card["id"] {
 		t.Fatalf("start: got %d %v", code, sess)
 	}
 	// Тот же номер нельзя поставить второй раз, даже из другого аккаунта.
@@ -56,7 +59,7 @@ func TestSessions(t *testing.T) {
 		t.Errorf("someone else's session: want 404, got %d", code)
 	}
 	code, ext := e.call("POST", path+"/extend", alice, map[string]int{"minutes": 30})
-	if code != 200 || ext["cost"] != float64(9000) {
+	if code != 200 || ext["cost"] != float64(9000) || ext["paid"] != float64(9000) {
 		t.Errorf("extend: got %d %v", code, ext)
 	}
 	if code, _ := e.call("POST", path+"/extend", alice, map[string]int{"minutes": 1440}); code != 400 {
@@ -69,6 +72,9 @@ func TestSessions(t *testing.T) {
 	}
 	if cost := stopped["cost"].(float64); cost > 100 { // простояли секунды - копейки
 		t.Errorf("stopped right away: want almost free, got %v", cost)
+	}
+	if stopped["paid"] != stopped["cost"] {
+		t.Errorf("stop must refund the rest: paid %v, cost %v", stopped["paid"], stopped["cost"])
 	}
 	if code, _ := e.call("POST", path+"/stop", alice, nil); code != 409 {
 		t.Errorf("stop twice: want 409, got %d", code)

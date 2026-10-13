@@ -16,6 +16,8 @@ import (
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/httpapi"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/payments/fakepay"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/reminders"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
@@ -59,7 +61,8 @@ func run(log *slog.Logger) error {
 		}
 	}
 
-	sessions := parking.NewService(pool)
+	pay := fakepay.New(pool) // TODO: настоящий платёжный провайдер
+	sessions := parking.NewService(pool, pay)
 	worker := reminders.NewWorker(pool, reminders.LogNotifier{Log: log}, sessions, log) // TODO: настоящие push
 	workerDone := make(chan struct{})
 	go func() {
@@ -85,6 +88,8 @@ func run(log *slog.Logger) error {
 			Vehicles: vehicles.NewRepository(pool),
 			Sessions: sessions,
 			Devices:  reminders.NewDevices(pool),
+			Cards:    payments.NewCards(pool, pay),
+			FakePay:  pay.Handler(log),
 			Log:      log,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

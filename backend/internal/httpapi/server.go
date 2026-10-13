@@ -33,7 +33,11 @@ type Deps struct {
 	Vehicles VehicleStore
 	Sessions SessionService
 	Devices  DeviceStore
-	Log      *slog.Logger
+	Cards    CardStore
+	// FakePay - ручки тестового платёжного провайдера (/fakepay/...).
+	// Живут на нашем сервере, но к нашему API не относятся.
+	FakePay http.Handler
+	Log     *slog.Logger
 }
 
 // NewHandler собирает все маршруты API.
@@ -44,6 +48,10 @@ func NewHandler(d Deps) http.Handler {
 	registerVehicles(mux, d.Auth, d.Vehicles, log)
 	registerSessions(mux, d.Auth, d.Sessions, log)
 	registerDevices(mux, d.Auth, d.Devices, log)
+	registerCards(mux, d.Auth, d.Cards, log)
+	if d.FakePay != nil {
+		mux.Handle("/fakepay/", d.FakePay)
+	}
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {
