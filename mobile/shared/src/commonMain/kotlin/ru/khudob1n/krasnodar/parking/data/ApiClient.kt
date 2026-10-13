@@ -154,13 +154,23 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         ok(http.delete(joinUrl(baseUrl, "/api/v1/cards/$id")) { header(HttpHeaders.Authorization, "Bearer $token") })
     }
 
-    /** Начать парковку (POST /api/v1/sessions). Машина уже стоит - ApiException 409. */
-    suspend fun startSession(token: String, zone: Int, vehicleId: Long, minutes: Int): ParkingSession =
+    /**
+     * Начать парковку (POST /api/v1/sessions). С предоплатой сразу списывается цена [minutes] минут,
+     * с постоплатой ([minutes] не важен) - ничего, пока не остановят. Машина уже стоит - ApiException
+     * 409, карта не прошла или висит долг - 402.
+     */
+    suspend fun startSession(token: String, zone: Int, vehicleId: Long, minutes: Int, cardId: Long, mode: PaymentMode): ParkingSession =
         json.decodeFromString<ParkingSession>(ok(post("/api/v1/sessions", buildJsonObject {
             put("zone", zone)
             put("vehicleId", vehicleId)
             put("minutes", minutes)
+            put("cardId", cardId)
+            put("mode", if (mode == PaymentMode.Postpaid) "postpaid" else "prepaid")
         }.toString(), token)))
+
+    /** Оплатить долг завершённой парковки картой [cardId] (POST /api/v1/sessions/{id}/pay). */
+    suspend fun paySession(token: String, id: Long, cardId: Long): ParkingSession =
+        json.decodeFromString<ParkingSession>(ok(post("/api/v1/sessions/$id/pay", buildJsonObject { put("cardId", cardId) }.toString(), token)))
 
     /** Продлить на [minutes] минут (POST /api/v1/sessions/{id}/extend). */
     suspend fun extendSession(token: String, id: Long, minutes: Int): ParkingSession =

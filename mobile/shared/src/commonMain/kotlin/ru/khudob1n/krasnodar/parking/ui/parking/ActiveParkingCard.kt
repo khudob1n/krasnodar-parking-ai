@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.khudob1n.krasnodar.parking.data.ApiException
+import ru.khudob1n.krasnodar.parking.data.CardRepository
+import ru.khudob1n.krasnodar.parking.data.label
+import ru.khudob1n.krasnodar.parking.ui.account.translateCardError
 import ru.khudob1n.krasnodar.parking.data.ParkingSession
 import ru.khudob1n.krasnodar.parking.data.SessionRepository
 import ru.khudob1n.krasnodar.parking.data.clockOf
@@ -41,23 +45,29 @@ import kotlin.time.Duration
 private val EXTEND_OPTIONS = listOf(15, 30, 60)
 
 /**
- * Идущая парковка: обратный отсчёт до конца оплаченного времени, продление и остановка.
- * Остановили - карточка показывает итог (только фактические минуты), пока её не закроют.
+ * Идущая парковка. С предоплатой - обратный отсчёт до конца оплаченного времени, продление и
+ * остановка; с постоплатой - сколько уже стоим и сколько набежало, и «Завершить и оплатить».
+ * Остановили - карточка показывает итог (только фактические минуты), пока её не закроют; если
+ * списать не вышло - долг и кнопку оплатить другой картой.
  */
 @Composable
-fun ActiveParkingCard(session: ParkingSession, sessions: SessionRepository, onClose: () -> Unit) {
+fun ActiveParkingCard(session: ParkingSession, sessions: SessionRepository, cards: CardRepository, onClose: () -> Unit) {
     val c = AppTheme.colors
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(Clock.System.now()) }
     var busy by remember { mutableStateOf(false) }
     var confirmStop by remember(session.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val cardList by cards.cards.collectAsState()
 
     // Продление меняет plannedEnd той же сессии - цикл читает свежую версию, а не ту, с которой начал.
     val current by rememberUpdatedState(session)
     LaunchedEffect(session.id) {
+        var tick = 0
         while (current.isActive) {
             now = Clock.System.now()
+            // У постоплаты сумма растёт: раз в минуту берём свежий расчёт с сервера.
+            if (current.isPostpaid && ++tick % 60 == 0) runCatching { sessions.refresh() }
             // Время вышло - сервер уже считает парковку завершённой, берём итог оттуда.
             if (current.remaining(now) == Duration.ZERO) {
                 runCatching { sessions.refresh() }
@@ -79,6 +89,7 @@ fun ActiveParkingCard(session: ParkingSession, sessions: SessionRepository, onCl
                 error = when (e.status) {
                     409 -> "Парковка уже завершена"
                     400 -> "Парковка не может длиться больше суток"
+                    402 -> translateCardError(e.message ?: "")
                     else -> e.message
                 }
             } catch (e: Exception) {
@@ -101,7 +112,22 @@ fun ActiveParkingCard(session: ParkingSession, sessions: SessionRepository, onCl
             if (!session.isActive) CloseButton(onClose)
         }
         Text("Зона ${session.zone} · ${formatPlate(session.plate)}", style = AppTheme.type.body, color = c.textSecondary)
-        if (session.isActive) {
+        if (session.isActive && session.isPostpaid) {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(formatCountdown(session.elapsed(now)), style = AppTheme.type.h3.copy(fontFamily = AppTheme.type.jetBrainsMono), color = c.textPrimary)
+                Text("с ${clockOf(session.startedAt)}", style = AppTheme.type.body, color = c.textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+            }
+            Text("Пока набежало ${formatRub(session.cost)}. Спишем, когда завершите.", style = AppTheme.type.small, color = c.functional)
+            if (confirmStop) {
+                Text("Завершить сейчас? Спишутся только фактические минуты.", style = AppTheme.type.small, color = c.textSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PrimaryButton("Завершить и оплатить", enabled = !busy, modifier = Modifier.weight(1f)) { act { sessions.stop(session.id) } }
+                    TextButton("Отмена", enabled = !busy) { confirmStop = false }
+                }
+            } else {
+                PrimaryButton("Завершить парковку", enabled = !busy) { confirmStop = true }
+            }
+        } else if (session.isActive) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(formatCountdown(session.remaining(now)), style = AppTheme.type.h3.copy(fontFamily = AppTheme.type.jetBrainsMono), color = c.textPrimary)
                 Text("до ${clockOf(session.plannedEnd)}", style = AppTheme.type.body, color = c.textSecondary, modifier = Modifier.padding(bottom = 4.dp))
@@ -126,7 +152,31 @@ fun ActiveParkingCard(session: ParkingSession, sessions: SessionRepository, onCl
                 "С ${clockOf(session.startedAt)} до ${clockOf(session.endedAt ?: session.plannedEnd)} · ${formatRub(session.cost)}",
                 style = AppTheme.type.body, color = c.textPrimary,
             )
+            if (session.debt > 0) DebtBlock(session, sessions, cards, busy) { action -> act(action) }
+            else if (session.paid > 0) {
+                val card = cardList.firstOrNull { it.id == session.cardId }
+                Text("Списано ${formatRub(session.paid)}" + (card?.let { " с ${it.label()}" } ?: ""), style = AppTheme.type.small, color = c.functional)
+            }
         }
         error?.let { Text(it, style = AppTheme.type.small, color = c.warningText) }
     }
+}
+
+/** Списать в конце не вышло: сколько должны, почему, и оплата выбранной картой. */
+@Composable
+private fun DebtBlock(session: ParkingSession, sessions: SessionRepository, cards: CardRepository, busy: Boolean, act: (suspend () -> Unit) -> Unit) {
+    val c = AppTheme.colors
+    val list by cards.cards.collectAsState()
+    var chosen by remember { mutableStateOf<Long?>(null) }
+    Text(
+        "Не удалось списать ${formatRub(session.debt)}" + (session.paymentError?.let { ": ${translateCardError(it).lowercase()}" } ?: ""),
+        style = AppTheme.type.body, color = c.warningText,
+    )
+    if (list.isEmpty()) {
+        Text("Привяжите другую карту в профиле и оплатите отсюда.", style = AppTheme.type.small, color = c.textSecondary)
+        return
+    }
+    val card = list.firstOrNull { it.id == chosen } ?: list.last()
+    if (list.size > 1) ChoiceRow(list, card, { it.label() }) { chosen = it.id }
+    PrimaryButton("Оплатить ${formatRub(session.debt)} с ${card.label()}", enabled = !busy) { act { sessions.pay(session.id, card.id) } }
 }

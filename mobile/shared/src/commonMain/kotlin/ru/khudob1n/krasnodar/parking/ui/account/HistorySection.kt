@@ -40,8 +40,17 @@ fun HistorySection(sessions: SessionRepository) {
             if (i > 0) RowDivider()
             ProfileRow(trailing = {
                 Text(
-                    if (s.isActive) "идёт" else formatRub(s.cost),
-                    style = AppTheme.type.button, color = if (s.isActive) c.parkingPaid else c.textPrimary,
+                    when {
+                        s.isActive -> "идёт"
+                        s.debt > 0 -> "долг ${formatRub(s.debt)}"
+                        else -> formatRub(s.cost)
+                    },
+                    style = AppTheme.type.button,
+                    color = when {
+                        s.isActive -> c.parkingPaid
+                        s.debt > 0 -> c.warningText
+                        else -> c.textPrimary
+                    },
                 )
             }) {
                 Text("Зона ${s.zone} · ${formatPlate(s.plate)}", style = AppTheme.type.body, color = c.textPrimary)

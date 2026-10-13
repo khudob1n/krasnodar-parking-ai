@@ -38,6 +38,8 @@ import ru.khudob1n.krasnodar.parking.data.formatMinutes
 import ru.khudob1n.krasnodar.parking.data.formatRub
 import ru.khudob1n.krasnodar.parking.data.paidHoursLabel
 import ru.khudob1n.krasnodar.parking.data.priceLabel
+import ru.khudob1n.krasnodar.parking.data.PaymentMode
+import ru.khudob1n.krasnodar.parking.ui.parking.ChoiceRow
 import ru.khudob1n.krasnodar.parking.ui.theme.AppTheme
 
 /** Быстрый выбор длительности - самые частые варианты. */
@@ -81,9 +83,23 @@ fun ZoneSheet(zone: Zone, api: ApiClient, parking: ParkingActions, onClose: () -
         if (places.isNotEmpty()) Text(places.joinToString(", ").replaceFirstChar { it.uppercase() }, style = AppTheme.type.small, color = c.functional)
 
         if (zone.isPaid) {
+            var mode by remember { mutableStateOf(PaymentMode.Postpaid) }
             var minutes by remember(zone.number) { mutableStateOf(60) }
-            val quote = PriceCalculator(zone, api, minutes) { minutes = it }
-            StartParking(zone, minutes, quote, parking)
+            ChoiceRow(
+                listOf(PaymentMode.Postpaid, PaymentMode.Prepaid), mode,
+                { if (it == PaymentMode.Postpaid) "По факту" else "Заранее" },
+                Modifier.padding(top = 4.dp),
+            ) { mode = it }
+            if (mode == PaymentMode.Postpaid) {
+                Text(
+                    "Ставите и уезжаете, когда нужно. Спишем за фактические минуты, когда остановите парковку. Не дольше суток.",
+                    style = AppTheme.type.small, color = c.functional,
+                )
+                StartParking(zone, mode, minutes, null, parking)
+            } else {
+                val quote = PriceCalculator(zone, api, minutes) { minutes = it }
+                StartParking(zone, mode, minutes, quote, parking)
+            }
         }
     }
 }

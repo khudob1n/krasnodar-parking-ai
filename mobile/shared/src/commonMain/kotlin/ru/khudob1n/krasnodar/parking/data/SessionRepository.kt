@@ -13,8 +13,11 @@ class SessionRepository(private val api: ApiClient, private val auth: AuthReposi
         state.value = auth.withToken { api.sessions(it) }
     }
 
-    suspend fun start(zone: Int, vehicleId: Long, minutes: Int): ParkingSession =
-        auth.withToken { api.startSession(it, zone, vehicleId, minutes) }.also(::put)
+    suspend fun start(zone: Int, vehicleId: Long, minutes: Int, cardId: Long, mode: PaymentMode): ParkingSession =
+        auth.withToken { api.startSession(it, zone, vehicleId, minutes, cardId, mode) }.also(::put)
+
+    suspend fun pay(id: Long, cardId: Long): ParkingSession =
+        auth.withToken { api.paySession(it, id, cardId) }.also(::put)
 
     suspend fun extend(id: Long, minutes: Int): ParkingSession =
         auth.withToken { api.extendSession(it, id, minutes) }.also(::put)

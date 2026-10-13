@@ -8,6 +8,13 @@ import kotlin.time.Instant
 @Serializable
 data class Tariff(val pricePerHour: Long, val paidFrom: String, val paidTo: String)
 
+/** Как платим: заранее за выбранное время или по факту, когда остановили. */
+@Serializable
+enum class PaymentMode {
+    @SerialName("prepaid") Prepaid,
+    @SerialName("postpaid") Postpaid,
+}
+
 @Serializable
 enum class SessionStatus {
     @SerialName("active") Active,
@@ -15,8 +22,11 @@ enum class SessionStatus {
 }
 
 /**
- * Парковка (backend/internal/parking/session.go). Время - строки RFC 3339 по Краснодару.
- * cost - копейки: у активной - сколько выйдет, если стоять до plannedEnd, у завершённой - итог.
+ * Парковка (backend/internal/parking/session.go). Время - строки RFC 3339.
+ * cost - копейки: у завершённой - итог; у активной с предоплатой - сколько выйдет, если стоять до
+ * plannedEnd, с постоплатой - сколько набежало к моменту ответа сервера.
+ * paid - сколько уже списано (за вычетом возвратов), debt - сколько не удалось списать в конце
+ * постоплатной парковки, paymentError - почему.
  */
 @Serializable
 data class ParkingSession(
@@ -29,8 +39,17 @@ data class ParkingSession(
     val endedAt: String? = null,
     val status: SessionStatus,
     val cost: Long,
+    val mode: PaymentMode = PaymentMode.Prepaid,
+    val cardId: Long? = null,
+    val paid: Long = 0,
+    val debt: Long = 0,
+    val paymentError: String? = null,
 ) {
     val isActive: Boolean get() = status == SessionStatus.Active
+    val isPostpaid: Boolean get() = mode == PaymentMode.Postpaid
+
+    /** Сколько стоим (для постоплаты: таймер идёт вперёд). */
+    fun elapsed(now: Instant): Duration = (now - Instant.parse(startedAt)).coerceAtLeast(Duration.ZERO)
 
     /** Сколько осталось до конца оплаченного времени (не меньше нуля). */
     fun remaining(now: Instant): Duration = (Instant.parse(plannedEnd) - now).coerceAtLeast(Duration.ZERO)

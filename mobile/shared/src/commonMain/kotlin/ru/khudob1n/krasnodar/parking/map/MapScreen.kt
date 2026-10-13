@@ -98,16 +98,17 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
     val askNotifications = rememberNotificationPermissionRequest()
     val parkingActions = remember {
         ParkingActions(
-            auth, vehicles, sessions,
+            auth, vehicles, cards, sessions,
             openAccount = { accountOpen = true; selected = null },
             onStarted = { started -> selected = null; shownParking = started.id; askNotifications() },
         )
     }
 
     // Напоминания на устройстве: у идущих парковок - за 10 минут и в конце, у завершённых - отменить.
+    // У постоплаты конца нет (plannedEnd - лишь предел в сутки), напоминать не о чем.
     LaunchedEffect(parkings) {
         parkings.forEach { p ->
-            if (p.isActive) p.reminders().forEach(Reminders::schedule) else reminderIds(p.id).forEach(Reminders::cancel)
+            if (p.isActive && !p.isPostpaid) p.reminders().forEach(Reminders::schedule) else reminderIds(p.id).forEach(Reminders::cancel)
         }
     }
 
@@ -121,6 +122,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
         }
         try {
             vehicles.refresh()
+            cards.refresh()
             sessions.refresh()
         } catch (e: CancellationException) {
             throw e
@@ -232,7 +234,7 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
                 zone != null -> ZoneSheet(zone, api, parkingActions, onClose = { selected = null })
                 parking != null -> {
                     LaunchedEffect(parking.id) { shownParking = parking.id }
-                    ActiveParkingCard(parking, sessions, onClose = { shownParking = null })
+                    ActiveParkingCard(parking, sessions, cards, onClose = { shownParking = null })
                 }
                 nearest.isNotEmpty() -> NearestList(nearest, nearUser = user != null, onPick = { picked ->
                     selected = picked
