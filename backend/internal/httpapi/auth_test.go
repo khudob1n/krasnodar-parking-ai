@@ -50,3 +50,13 @@ func TestAuthFlow(t *testing.T) {
 		t.Errorf("refresh after logout: want 401, got %d", code)
 	}
 }
+
+// Сбой сервиса звонков - понятный текст для приложения, а не «internal error».
+func TestAuthSendFailed(t *testing.T) {
+	e := newTestEnv(t)
+	e.sms.fail = true
+	code, out := e.call("POST", "/api/v1/auth/code", "", map[string]string{"phone": "+79181234567"})
+	if code != 502 || out["error"] != "Не получилось позвонить на номер. Попробуйте позже." {
+		t.Errorf("want 502 with message, got %d %v", code, out)
+	}
+}
