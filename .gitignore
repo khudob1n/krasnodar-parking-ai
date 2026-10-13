@@ -1,0 +1,17 @@
+# Go
+/backend/bin/
+*.test
+*.out
+
+# Kotlin / Gradle
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Secrets
+.env
