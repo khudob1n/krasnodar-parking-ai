@@ -15,6 +15,7 @@ import (
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/config"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/httpapi"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
@@ -59,6 +60,7 @@ func run(log *slog.Logger) error {
 				auth.NewTokens(cfg.JWTSecret, cfg.AccessTokenTTL),
 			),
 			Vehicles: vehicles.NewRepository(pool),
+			Sessions: parking.NewService(pool),
 			Log:      log,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
