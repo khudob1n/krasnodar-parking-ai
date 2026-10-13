@@ -2,11 +2,20 @@ package ru.khudob1n.krasnodar.parking.data
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.content.TextContent
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** Ответ сервера не 2xx: status - код, message - поле error из тела, если есть. */
 class ApiException(val status: Int, message: String) : Exception(message)
@@ -53,6 +62,48 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
         return json.decodeFromString<Quote>(body)
     }
+
+    /** Отправить код в SMS (POST /api/v1/auth/code). */
+    suspend fun requestCode(phone: String): CodeResult {
+        val response = post("/api/v1/auth/code", buildJsonObject { put("phone", phone) }.toString())
+        return when {
+            response.status.isSuccess() -> CodeResult.Sent
+            response.status.value == 429 ->
+                CodeResult.TooSoon(response.headers[HttpHeaders.RetryAfter]?.toIntOrNull() ?: 60)
+            else -> CodeResult.Failed(errorMessage(response.bodyAsText()))
+        }
+    }
+
+    /** Войти по коду из SMS (POST /api/v1/auth/verify). Неверный код - ApiException 401. */
+    suspend fun verify(phone: String, code: String): AuthSession =
+        session(post("/api/v1/auth/verify", buildJsonObject { put("phone", phone); put("code", code) }.toString()))
+
+    /** Новая пара токенов по refresh-токену (POST /api/v1/auth/refresh). */
+    suspend fun refresh(refreshToken: String): AuthSession =
+        session(post("/api/v1/auth/refresh", buildJsonObject { put("refreshToken", refreshToken) }.toString()))
+
+    /** Забыть refresh-токен на сервере (POST /api/v1/auth/logout). */
+    suspend fun logout(refreshToken: String) {
+        val response = post("/api/v1/auth/logout", buildJsonObject { put("refreshToken", refreshToken) }.toString())
+        if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(response.bodyAsText()))
+    }
+
+    private suspend fun session(response: HttpResponse): AuthSession {
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ApiException(response.status.value, errorMessage(body))
+        return json.decodeFromString<AuthSession>(body)
+    }
+
+    /** POST с телом JSON; [token] - access-токен для запросов от имени пользователя. */
+    internal suspend fun post(path: String, body: String, token: String? = null): HttpResponse =
+        http.post(joinUrl(baseUrl, path)) {
+            token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            setBody(TextContent(body, ContentType.Application.Json))
+        }
+
+    /** GET от имени пользователя. */
+    internal suspend fun getAuthorized(path: String, token: String): HttpResponse =
+        http.get(joinUrl(baseUrl, path)) { header(HttpHeaders.Authorization, "Bearer $token") }
 }
 
 // coerceInputValues: null от Go (пустой срез) превращается в значение по умолчанию.
