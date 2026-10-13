@@ -105,9 +105,10 @@ fun MapScreen(api: ApiClient, catalog: ZoneCatalog, auth: AuthRepository, vehicl
     }
 
     // Напоминания на устройстве: у идущих парковок - за 10 минут и в конце, у завершённых - отменить.
+    // У постоплаты конца нет (plannedEnd - лишь предел в сутки), напоминать не о чем.
     LaunchedEffect(parkings) {
         parkings.forEach { p ->
-            if (p.isActive) p.reminders().forEach(Reminders::schedule) else reminderIds(p.id).forEach(Reminders::cancel)
+            if (p.isActive && !p.isPostpaid) p.reminders().forEach(Reminders::schedule) else reminderIds(p.id).forEach(Reminders::cancel)
         }
     }
 

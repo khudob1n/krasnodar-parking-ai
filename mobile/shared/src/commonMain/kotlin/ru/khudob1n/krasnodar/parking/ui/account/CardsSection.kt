@@ -138,6 +138,9 @@ internal fun translateCardError(message: String): String = when (message) {
     "card number is invalid" -> "Неверный номер карты"
     "card is expired" -> "Срок действия карты истёк"
     "cvc must be 3 digits" -> "CVC - три цифры с обратной стороны карты"
+    "expiry date is invalid" -> "Срок действия - месяц и год, например 12/30"
+    "card already added" -> "Эта карта уже привязана"
+    "add a payment card first" -> "Карта отвязана. Привяжите карту в профиле"
     "unknown card token", "card declined" -> "Банк отклонил карту. Попробуйте другую"
     "insufficient funds" -> "На карте не хватает денег"
     else -> message
