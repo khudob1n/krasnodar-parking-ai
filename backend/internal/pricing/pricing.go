@@ -22,9 +22,9 @@ func mustLoad(name string) *time.Location {
 
 // Tariff - тариф зоны.
 type Tariff struct {
-	PricePerHour int64  // копейки за час в платное время
-	PaidFrom     string // "08:00"
-	PaidTo       string // "19:00"; равное PaidFrom значит «круглосуточно»
+	PricePerHour int64  `json:"pricePerHour"` // копейки за час в платное время
+	PaidFrom     string `json:"paidFrom"`     // "08:00"
+	PaidTo       string `json:"paidTo"`       // "19:00"; равное PaidFrom значит «круглосуточно»
 }
 
 // Quote - результат расчёта.

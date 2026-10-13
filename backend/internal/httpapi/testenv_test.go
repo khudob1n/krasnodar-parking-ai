@@ -18,6 +18,7 @@ import (
 
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/auth"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/parking"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/vehicles"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/zones"
 )
@@ -47,7 +48,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE users, login_codes, refresh_tokens CASCADE"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE users, login_codes, refresh_tokens, zones CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,6 +59,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Zones:    zones.NewRepository(pool),
 		Auth:     svc,
 		Vehicles: vehicles.NewRepository(pool),
+		Sessions: parking.NewService(pool),
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}))
 	t.Cleanup(srv.Close)

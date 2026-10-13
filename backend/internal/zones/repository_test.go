@@ -27,7 +27,7 @@ func TestRepositoryUpsertAndGet(t *testing.T) {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE zones"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE zones CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,7 +100,7 @@ func TestRepositoryNearby(t *testing.T) {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE zones"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE zones CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 
