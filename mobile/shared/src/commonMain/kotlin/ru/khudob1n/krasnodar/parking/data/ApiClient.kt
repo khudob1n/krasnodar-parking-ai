@@ -78,7 +78,7 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         return json.decodeFromString<Quote>(body)
     }
 
-    /** Отправить код в SMS (POST /api/v1/auth/code). */
+    /** Запросить код: сервер позвонит, код - последние 4 цифры номера (POST /api/v1/auth/code). */
     suspend fun requestCode(phone: String): CodeResult {
         val response = post("/api/v1/auth/code", buildJsonObject { put("phone", phone) }.toString())
         return when {
@@ -89,7 +89,7 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         }
     }
 
-    /** Войти по коду из SMS (POST /api/v1/auth/verify). Неверный код - ApiException 401. */
+    /** Войти по коду из звонка (POST /api/v1/auth/verify). Неверный код - ApiException 401. */
     suspend fun verify(phone: String, code: String): AuthSession =
         session(post("/api/v1/auth/verify", buildJsonObject { put("phone", phone); put("code", code) }.toString()))
 
