@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -24,9 +25,19 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Deps - всё, что нужно ручкам API.
+type Deps struct {
+	DB    Pinger
+	Zones ZoneStore
+	Auth  AuthService
+	Log   *slog.Logger
+}
+
 // NewHandler собирает все маршруты API.
-func NewHandler(db Pinger, store ZoneStore, log *slog.Logger) http.Handler {
+func NewHandler(d Deps) http.Handler {
+	db, store, log := d.DB, d.Zones, d.Log
 	mux := http.NewServeMux()
+	registerAuth(mux, d.Auth, log)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {
@@ -112,6 +123,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// readJSON читает тело запроса в v. Тело ограничено 64 КБ, неизвестные
+// поля - ошибка: так опечатки в клиенте видны сразу.
+func readJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return errors.New("invalid JSON body")
+	}
+	return nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

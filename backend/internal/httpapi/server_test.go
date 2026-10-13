@@ -40,7 +40,7 @@ func TestHandler(t *testing.T) {
 	store := fakeStore{1103: {Number: 1103, Kind: zones.KindStreet, PricePerHour: 6000, PaidFrom: "08:00", PaidTo: "19:00"}}
 	now = func() time.Time { return time.Date(2026, 10, 13, 18, 30, 0, 0, pricing.Krasnodar) }
 	t.Cleanup(func() { now = time.Now })
-	h := NewHandler(fakePinger{}, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := NewHandler(Deps{DB: fakePinger{}, Zones: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 
 	cases := []struct {
 		path       string

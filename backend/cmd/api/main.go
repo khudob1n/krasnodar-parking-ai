@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/auth"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/config"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/db"
 	"github.com/khudob1n/krasnodar-parking-ai/backend/internal/httpapi"
@@ -30,7 +31,13 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if err := cfg.RequireJWTSecret(); err != nil {
+		return err
+	}
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -41,8 +48,17 @@ func run(log *slog.Logger) error {
 	}
 
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewHandler(pool, zones.NewRepository(pool), log),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewHandler(httpapi.Deps{
+			DB:    pool,
+			Zones: zones.NewRepository(pool),
+			Auth: auth.NewService(
+				auth.NewPGStore(pool),
+				auth.LogSender{Log: log}, // TODO: настоящий SMS-шлюз
+				auth.NewTokens(cfg.JWTSecret, cfg.AccessTokenTTL),
+			),
+			Log: log,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

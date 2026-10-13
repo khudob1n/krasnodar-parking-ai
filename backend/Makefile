@@ -12,7 +12,7 @@ import:
 	DATABASE_URL=$(DB_URL) go run ./cmd/import-zones -file ../data/zones.json
 
 run:
-	DATABASE_URL=$(DB_URL) go run ./cmd/api
+	DATABASE_URL=$(DB_URL) JWT_SECRET=dev-secret-dev-secret-dev-secret-00 go run ./cmd/api
 
 test:
 	TEST_DATABASE_URL=$(DB_URL) go test ./...
