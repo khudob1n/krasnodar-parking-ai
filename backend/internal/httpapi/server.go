@@ -18,6 +18,7 @@ import (
 // конкретного типа позволяет подменить базу в тестах.
 type ZoneStore interface {
 	Get(ctx context.Context, number int) (zones.Zone, error)
+	All(ctx context.Context) ([]zones.Zone, error)
 	Nearby(ctx context.Context, q zones.NearbyQuery) ([]zones.NearbyZone, error)
 }
 
@@ -33,7 +34,11 @@ type Deps struct {
 	Vehicles VehicleStore
 	Sessions SessionService
 	Devices  DeviceStore
-	Log      *slog.Logger
+	Cards    CardStore
+	// FakePay - ручки тестового платёжного провайдера (/fakepay/...).
+	// Живут на нашем сервере, но к нашему API не относятся.
+	FakePay http.Handler
+	Log     *slog.Logger
 }
 
 // NewHandler собирает все маршруты API.
@@ -44,6 +49,10 @@ func NewHandler(d Deps) http.Handler {
 	registerVehicles(mux, d.Auth, d.Vehicles, log)
 	registerSessions(mux, d.Auth, d.Sessions, log)
 	registerDevices(mux, d.Auth, d.Devices, log)
+	registerCards(mux, d.Auth, d.Cards, log)
+	if d.FakePay != nil {
+		mux.Handle("/fakepay/", d.FakePay)
+	}
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {
@@ -53,6 +62,8 @@ func NewHandler(d Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	mux.Handle("GET /api/v1/zones", &allZones{store: store, log: log})
 
 	mux.HandleFunc("GET /api/v1/zones/{number}", func(w http.ResponseWriter, r *http.Request) {
 		number, err := strconv.Atoi(r.PathValue("number"))

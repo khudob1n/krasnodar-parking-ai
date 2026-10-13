@@ -1,0 +1,17 @@
+name: keepalive
+
+# Бесплатный Render засыпает после 15 минут без запросов, и первый запрос потом ждёт
+# до минуты. Стучимся в /healthz чаще - сервер не засыпает. Адрес - переменная репо API_BASE_URL.
+# Часов хватает: Render даёт 750 бесплатных часов в месяц, один сервис круглые сутки - ~744.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: vars.API_BASE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: curl -fsS --retry 3 --retry-delay 10 --max-time 90 "${{ vars.API_BASE_URL }}/healthz"
