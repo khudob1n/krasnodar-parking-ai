@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"context"
 	"io"
 	"log/slog"
@@ -32,6 +33,14 @@ func (f fakeStore) Nearby(_ context.Context, q zones.NearbyQuery) ([]zones.Nearb
 	return list, nil
 }
 
+func (f fakeStore) All(context.Context) ([]zones.Zone, error) {
+	list := []zones.Zone{}
+	for _, z := range f {
+		list = append(list, z)
+	}
+	return list, nil
+}
+
 type fakePinger struct{ err error }
 
 func (p fakePinger) Ping(context.Context) error { return p.err }
@@ -48,6 +57,7 @@ func TestHandler(t *testing.T) {
 		wantBody   string
 	}{
 		{"/api/v1/zones/1103", http.StatusOK, `"number":1103`},
+		{"/api/v1/zones", http.StatusOK, `{"zones":[{"number":1103`},
 		{"/api/v1/zones/1", http.StatusNotFound, `zone not found`},
 		{"/api/v1/zones/abc", http.StatusBadRequest, `must be an integer`},
 		{"/healthz", http.StatusOK, `"ok"`},
@@ -75,5 +85,38 @@ func TestHandler(t *testing.T) {
 				t.Errorf("body %q does not contain %q", rec.Body.String(), c.wantBody)
 			}
 		})
+	}
+}
+
+func TestAllZonesGzipAndETag(t *testing.T) {
+	store := fakeStore{1103: {Number: 1103, Kind: zones.KindStreet}}
+	h := NewHandler(Deps{DB: fakePinger{}, Zones: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/zones", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("status %d, encoding %q", rec.Code, rec.Header().Get("Content-Encoding"))
+	}
+	zr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(zr)
+	if !strings.Contains(string(raw), `"number":1103`) {
+		t.Fatalf("body %q", raw)
+	}
+
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag")
+	}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/zones", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+		t.Fatalf("want empty 304, got %d %q", rec.Code, rec.Body.String())
 	}
 }

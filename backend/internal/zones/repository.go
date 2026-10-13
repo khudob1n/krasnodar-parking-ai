@@ -145,6 +145,29 @@ func (r *Repository) Get(ctx context.Context, number int) (Zone, error) {
 	return z, nil
 }
 
+// All возвращает все зоны города по номеру. Их всего ~1700, приложение берёт
+// их одним запросом и хранит у себя: так карта не ждёт сеть при каждом сдвиге.
+func (r *Repository) All(ctx context.Context) ([]Zone, error) {
+	rows, err := r.pool.Query(ctx, `SELECT`+zoneColumns+` FROM zones ORDER BY number`)
+	if err != nil {
+		return nil, fmt.Errorf("all zones: %w", err)
+	}
+	defer rows.Close()
+
+	result := []Zone{}
+	for rows.Next() {
+		z, err := scanZone(rows)
+		if err != nil {
+			return nil, fmt.Errorf("all zones: %w", err)
+		}
+		result = append(result, z)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("all zones: %w", err)
+	}
+	return result, nil
+}
+
 // NearbyQuery - параметры поиска парковок рядом с точкой.
 type NearbyQuery struct {
 	Point        Point

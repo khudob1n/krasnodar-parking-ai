@@ -45,6 +45,20 @@ class ApiClient(private val http: HttpClient, private val baseUrl: String) {
         return json.decodeFromString<NearbyResponse>(body).zones
     }
 
+    /**
+     * Все зоны города (GET /api/v1/zones). [etag] - метка уже сохранённых зон: если они не
+     * изменились, сервер отвечает 304 и возвращается null.
+     */
+    suspend fun allZones(etag: String?): ZoneCatalogData? {
+        val response = http.get(joinUrl(baseUrl, "/api/v1/zones")) {
+            etag?.let { header(HttpHeaders.IfNoneMatch, it) }
+        }
+        if (response.status.value == 304) return null
+        val body = ok(response)
+        val zones = json.decodeFromString<NearbyResponse>(body).zones
+        return ZoneCatalogData(etag = response.headers[HttpHeaders.ETag], zones = zones)
+    }
+
     /** Зона по номеру с таблички; null - такой зоны нет (GET /api/v1/zones/{number}). */
     suspend fun zone(number: Int): Zone? {
         val response = http.get(joinUrl(baseUrl, "/api/v1/zones/$number"))
